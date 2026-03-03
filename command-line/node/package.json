@@ -1,0 +1,11 @@
+{
+  "dependencies": {
+    "@google/genai": "^1.43.0",
+    "mic": "^2.1.2",
+    "speaker": "^0.5.5"
+  },
+  "devDependencies": {
+    "@types/node": "^25.3.3",
+    "typescript": "^5.9.3"
+  }
+}
