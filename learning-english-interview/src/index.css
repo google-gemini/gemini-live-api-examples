@@ -1,0 +1,119 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Space+Grotesk:wght@400;500;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 220 12% 12%; /* Dark gray text */
+
+    --card: 0 0% 100%;
+    --card-foreground: 220 12% 12%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 220 12% 12%;
+
+    --primary: 217 89% 61%; /* Google Blue */
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 220 10% 96%; /* Very light gray */
+    --secondary-foreground: 220 12% 12%;
+
+    --muted: 220 10% 96%;
+    --muted-foreground: 220 10% 45%;
+
+    --accent: 217 89% 61%; 
+    --accent-foreground: 0 0% 100%;
+
+    --destructive: 4 82% 56%; /* Google Red */
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 220 12% 90%; 
+    --input: 220 12% 90%;
+    --ring: 217 89% 61%;
+
+    --radius: 0.5rem; 
+
+    --sidebar-background: 0 0% 98%; 
+    --sidebar-foreground: 220 12% 20%;
+    --sidebar-primary: 217 89% 61%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 220 10% 94%;
+    --sidebar-accent-foreground: 217 89% 61%;
+    --sidebar-border: 220 12% 90%;
+    --sidebar-ring: 217 89% 61%;
+
+    /* Custom tokens */
+    --success: 136 53% 43%; /* Google Green */
+    --success-foreground: 0 0% 100%;
+    --warning: 45 100% 50%; /* Google Yellow */
+    --warning-foreground: 0 0% 12%;
+    --info: 217 89% 61%; 
+    --info-foreground: 0 0% 100%;
+
+    --gradient-fire: linear-gradient(135deg, hsl(217, 89%, 61%), hsl(136, 53%, 43%)); 
+    --gradient-warm: linear-gradient(135deg, hsl(45, 100%, 50%), hsl(4, 82%, 56%)); 
+    --gradient-subtle: linear-gradient(135deg, hsl(0, 0%, 100%), hsl(220, 10% ,96%));
+    --gradient-card: linear-gradient(180deg, hsl(0, 0%, 100%), hsl(0, 0%, 98%));
+
+    --shadow-glow: 0 0 20px -5px hsl(217 89% 61% / 0.2); 
+    --shadow-card: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06); 
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground font-sans antialiased;
+    font-family: 'Inter', sans-serif;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    font-family: 'Space Grotesk', sans-serif;
+  }
+}
+
+@layer utilities {
+  .text-gradient-fire {
+    background: var(--gradient-fire);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  .bg-gradient-fire {
+    background: var(--gradient-fire);
+  }
+
+  .bg-gradient-warm {
+    background: var(--gradient-warm);
+  }
+
+  .bg-gradient-subtle {
+    background: var(--gradient-subtle);
+  }
+
+  .bg-gradient-card {
+    background: var(--gradient-card);
+  }
+
+  .shadow-glow {
+    box-shadow: var(--shadow-glow);
+  }
+
+  .shadow-card {
+    box-shadow: var(--shadow-card);
+  }
+
+  .glass {
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    background: hsl(0 0% 100% / 0.7);
+    border: 1px solid hsl(220 12% 90% / 0.5);
+  }
+}
