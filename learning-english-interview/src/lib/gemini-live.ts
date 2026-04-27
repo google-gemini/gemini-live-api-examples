@@ -14,7 +14,16 @@ export interface GeminiLiveCallbacks {
 }
 
 export class GeminiLiveClient {
+  private apiKey: string;
+  private systemInstruction: string;
+  private callbacks: GeminiLiveCallbacks;
   private isSilent: boolean = false;
+  private ws: WebSocket | null = null;
+  private audioContext: AudioContext | null = null;
+  private audioDestination: MediaStreamAudioDestinationNode | null = null;
+  private audioQueue: Float32Array[] = [];
+  private isPlaying: boolean = false;
+  private currentSourceNode: AudioBufferSourceNode | null = null;
 
   constructor(apiKey: string, systemInstruction: string, callbacks: GeminiLiveCallbacks, isSilent: boolean = false) {
     this.apiKey = apiKey;
@@ -267,7 +276,7 @@ export class GeminiLiveClient {
     if (!this.audioContext) return;
 
     const buffer = this.audioContext.createBuffer(1, chunk.length, 24000);
-    buffer.copyToChannel(new Float32Array(chunk) as Float32Array<ArrayBuffer>, 0);
+    buffer.copyToChannel(chunk, 0);
 
     const source = this.audioContext.createBufferSource();
     source.buffer = buffer;

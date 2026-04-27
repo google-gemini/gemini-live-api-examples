@@ -12,6 +12,7 @@ import { buildSurveyAgentPrompt } from "@/lib/agent-prompt";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Camera, CameraOff, Mic, MicOff, PhoneOff, MessageSquare, Video, AlertTriangle, Settings, Loader2, ImageIcon, Expand, X } from "lucide-react";
 import { toast } from "sonner";
+import mermaid from "mermaid";
 
 interface ChatMessage {
   role: "ai" | "user" | "system";
