@@ -104,3 +104,55 @@ class AddCSSStyleTool extends FunctionCallDefinition {
     console.log(`   Applied to ${document.querySelectorAll(selector).length} element(s)`);
   }
 }
+
+/**
+ * Get Order Tool
+ * Simulates an async backend call to fetch an order by ID.
+ * Non-blocking: sleeps for 5 seconds then returns a mock order object.
+ */
+class GetOrderTool extends FunctionCallDefinition {
+  constructor() {
+    super(
+      "get_order",
+      "Fetches the details of a customer order by order ID. This is an async operation that may take a few seconds.",
+      {
+        type: "object",
+        properties: {
+          order_id: {
+            type: "string",
+            description: "The unique identifier of the order to retrieve (e.g. 'ORD-1234')"
+          }
+        }
+      },
+      ["order_id"],
+      "NON_BLOCKING" // Tell the API to run this tool asynchronously
+    );
+  }
+
+  async functionToCall(parameters) {
+    const orderId = parameters.order_id || "ORD-UNKNOWN";
+    console.log(`📦 get_order called for ${orderId} — waiting 5s to simulate backend fetch...`);
+
+    // Non-blocking 5-second delay simulating an async backend request
+    await new Promise((resolve) => setTimeout(resolve, 15000));
+
+    const mockOrder = {
+      order_id: orderId,
+      status: "shipped",
+      customer: {
+        name: "Alex Johnson",
+        email: "alex.johnson@example.com"
+      },
+      items: [
+        { sku: "WIDGET-42", name: "Super Widget", quantity: 2, unit_price_usd: 19.99 },
+        { sku: "GADGET-7", name: "Mega Gadget", quantity: 1, unit_price_usd: 49.99 }
+      ],
+      total_usd: 89.97,
+      estimated_delivery: "2026-05-10",
+      tracking_number: "1Z999AA10123456784"
+    };
+
+    console.log(`✅ get_order resolved for ${orderId}:`, mockOrder);
+    return mockOrder;
+  }
+}

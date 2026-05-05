@@ -85,7 +85,8 @@
 
           <div>
             <label for="model">Model ID:</label><br />
-            <input type="text" id="model" value="gemini-3.1-flash-live-preview" placeholder="Enter model ID" />
+            <input type="text" id="model" value="gemini-beyond-live-rev25-v4xs-proactive-rc1"
+              placeholder="Enter model ID" />
           </div>
         </details>
 
@@ -141,6 +142,12 @@ You are a helpful assistant. Be concise and friendly.</textarea>
             <input type="checkbox" id="enableCssStyleTool" checked />
             <label for="enableCssStyleTool">Add CSS Style</label>
             <span> (Inject CSS styles into the page) </span>
+          </div>
+
+          <div>
+            <input type="checkbox" id="enableGetOrderTool" checked />
+            <label for="enableGetOrderTool">Get Order</label>
+            <span> (Async mock: fetches a customer order from the backend, takes ~5s) </span>
           </div>
         </details>
 

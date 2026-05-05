@@ -101,11 +101,21 @@ function parseResponseMessages(data) {
  * Function call definition for tool use
  */
 class FunctionCallDefinition {
-  constructor(name, description, parameters, requiredParameters) {
+  /**
+   * @param {string} name
+   * @param {string} description
+   * @param {object} parameters  - JSON Schema object
+   * @param {string[]} requiredParameters
+   * @param {string|null} behavior - Optional. "NON_BLOCKING" to run the function
+   *   asynchronously (the model keeps talking while it waits for the result).
+   *   Leave null/undefined for default blocking behaviour.
+   */
+  constructor(name, description, parameters, requiredParameters, behavior = null) {
     this.name = name;
     this.description = description;
     this.parameters = parameters;
     this.requiredParameters = requiredParameters;
+    this.behavior = behavior; // "NON_BLOCKING" | null
   }
 
   functionToCall(parameters) {
@@ -118,17 +128,21 @@ class FunctionCallDefinition {
       description: this.description,
       parameters: { required: this.requiredParameters, ...this.parameters },
     };
+    // Include behavior field when set — required by the Live API for NON_BLOCKING tools
+    if (this.behavior) {
+      definition.behavior = this.behavior;
+    }
     console.log("created FunctionDefinition: ", definition);
     return definition;
   }
 
-  runFunction(parameters) {
+  async runFunction(parameters) {
     console.log(
       `⚡ Running ${this.name} function with parameters: ${JSON.stringify(
         parameters
       )}`
     );
-    return this.functionToCall(parameters);
+    return await this.functionToCall(parameters);
   }
 }
 
@@ -239,9 +253,9 @@ class GeminiLiveAPI {
     console.log("added function: ", newFunction);
   }
 
-  callFunction(functionName, parameters) {
+  async callFunction(functionName, parameters) {
     const functionToCall = this.functionsMap[functionName];
-    return functionToCall.runFunction(parameters);
+    return await functionToCall.runFunction(parameters);
   }
 
   connect() {
