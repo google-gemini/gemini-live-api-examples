@@ -12,7 +12,6 @@ import { buildSurveyAgentPrompt } from "@/lib/agent-prompt";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Camera, CameraOff, Mic, MicOff, PhoneOff, MessageSquare, Video, AlertTriangle, Settings, Loader2, ImageIcon, Expand, X } from "lucide-react";
 import { toast } from "sonner";
-import mermaid from "mermaid";
 
 interface ChatMessage {
   role: "ai" | "user" | "system";
@@ -122,25 +121,38 @@ const LiveSession = () => {
   useEffect(() => {
     if (!connected || !cameraOn || !videoRef.current || !geminiRef.current) return;
     
+    // Cache canvas and context to prevent garbage collection thrashing (1FPS allocation)
+    const canvas = document.createElement("canvas");
+    const ctx = canvas.getContext("2d");
+    
     const interval = setInterval(() => {
       const video = videoRef.current;
-      if (!video || !video.videoWidth) return;
+      if (!video || !video.videoWidth || !ctx) return;
       
-      const canvas = document.createElement("canvas");
       // Scale down to a max width of 640 to save bandwidth
       const scale = Math.min(640 / video.videoWidth, 1);
-      canvas.width = video.videoWidth * scale;
-      canvas.height = video.videoHeight * scale;
+      const targetWidth = video.videoWidth * scale;
+      const targetHeight = video.videoHeight * scale;
       
-      const ctx = canvas.getContext("2d");
-      if (ctx) {
-        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-        const dataUrl = canvas.toDataURL("image/jpeg", 0.6); // 60% quality jpeg
-        const base64 = dataUrl.split(",")[1];
-        if (base64) {
-          geminiRef.current?.sendVideo(base64);
-        }
+      // Dynamically resize cached canvas if needed
+      if (canvas.width !== targetWidth || canvas.height !== targetHeight) {
+        canvas.width = targetWidth;
+        canvas.height = targetHeight;
       }
+      
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      // Compress asynchronously inside browser background tasks to completely eradicate UI micro-janks
+      canvas.toBlob((blob) => {
+        if (!blob) return;
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          const base64 = (reader.result as string).split(",")[1];
+          if (base64 && geminiRef.current) {
+            geminiRef.current.sendVideo(base64);
+          }
+        };
+        reader.readAsDataURL(blob);
+      }, "image/jpeg", 0.6);
     }, 1000); // 1 frame per second
     
     return () => clearInterval(interval);
@@ -222,8 +234,17 @@ const LiveSession = () => {
             }, 1500);
 
             // Start audio capture
-            const capture = new AudioCapture((base64Pcm) => {
-              geminiRef.current?.sendAudio(base64Pcm);
+            // Start audio capture with client-side VAD to silence model instantly on user barge-in
+            const capture = new AudioCapture({
+              onChunk: (base64Pcm) => {
+                geminiRef.current?.sendAudio(base64Pcm);
+              },
+              onSpeechDetected: () => {
+                if (geminiRef.current) {
+                  console.log("Local VAD: Speech detected. Silencing model playback immediately.");
+                  geminiRef.current.stopAudioPlayback();
+                }
+              }
             });
             capture.start().catch(err => {
               console.error("Audio capture failed:", err);

@@ -42,8 +42,7 @@ Output a JSON object perfectly matching this schema:
     const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
     if (!text) throw new Error("No summary generated");
     
-    const cleanedText = text.replace(/```json|```/g, "").trim();
-    return JSON.parse(cleanedText);
+    return JSON.parse(text);
   } catch (err: any) {
     console.error("Summarization error:", err);
     // Save error to localStorage for debugging

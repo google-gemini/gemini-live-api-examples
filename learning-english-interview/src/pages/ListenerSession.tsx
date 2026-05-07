@@ -251,27 +251,34 @@ Rule: If you use Hebrew text inside a node, YOU MUST wrap it in double quotes! E
       setIsScreenSharing(true);
       toast.success("Screen sharing active", { description: "Sending frames to Gemini for emotion analysis." });
 
-      // Set up interval to take snapshots and send to Gemini (every 3 seconds to stay within limits)
+      // Cache canvas and context to prevent GC overhead
+      const canvas = document.createElement("canvas");
+      const ctx = canvas.getContext("2d");
 
-      // Set up interval to take snapshots and send to Gemini (every 3 seconds to stay within limits)
       const intervalId = setInterval(() => {
-        if (!screenVideoRef.current || !geminiRef.current) return;
+        if (!screenVideoRef.current || !geminiRef.current || !ctx) return;
         
         const video = screenVideoRef.current;
         if (video.videoWidth && video.videoHeight) {
-          const canvas = document.createElement("canvas");
-          canvas.width = video.videoWidth;
-          canvas.height = video.videoHeight;
-          const ctx = canvas.getContext("2d");
-          if (ctx) {
-            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-            // Convert to JPEG base64 (remove data:image/jpeg;base64, prefix)
-            const dataUrl = canvas.toDataURL("image/jpeg", 0.7);
-            const base64 = dataUrl.split(",")[1];
-            
-            console.log("Sending screen frame to Gemini...");
-            geminiRef.current.sendVideo(base64);
+          // Dynamically resize cached canvas dimensions if needed
+          if (canvas.width !== video.videoWidth || canvas.height !== video.videoHeight) {
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
           }
+          ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+          // Compress asynchronously inside background tasks to completely avoid UI bottlenecks
+          canvas.toBlob((blob) => {
+            if (!blob) return;
+            const reader = new FileReader();
+            reader.onloadend = () => {
+              const base64 = (reader.result as string).split(",")[1];
+              if (base64 && geminiRef.current) {
+                console.log("Sending screen frame to Gemini...");
+                geminiRef.current.sendVideo(base64);
+              }
+            };
+            reader.readAsDataURL(blob);
+          }, "image/jpeg", 0.7);
         }
       }, 3000);
 

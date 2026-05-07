@@ -14,9 +14,6 @@ export interface GeminiLiveCallbacks {
 }
 
 export class GeminiLiveClient {
-  private apiKey: string;
-  private systemInstruction: string;
-  private callbacks: GeminiLiveCallbacks;
   private isSilent: boolean = false;
   private ws: WebSocket | null = null;
   private audioContext: AudioContext | null = null;
@@ -24,6 +21,14 @@ export class GeminiLiveClient {
   private audioQueue: Float32Array[] = [];
   private isPlaying: boolean = false;
   private currentSourceNode: AudioBufferSourceNode | null = null;
+
+  private apiKey: string;
+  private systemInstruction: string;
+  private callbacks: GeminiLiveCallbacks;
+
+  private reconnectAttempts = 0;
+  private maxReconnectAttempts = 3;
+  private isExplicitDisconnect = false;
 
   constructor(apiKey: string, systemInstruction: string, callbacks: GeminiLiveCallbacks, isSilent: boolean = false) {
     this.apiKey = apiKey;
@@ -33,6 +38,7 @@ export class GeminiLiveClient {
   }
 
   connect() {
+    this.isExplicitDisconnect = false;
     const url = `${GEMINI_WS_URL}?key=${this.apiKey}`;
     this.ws = new WebSocket(url);
 
@@ -41,6 +47,8 @@ export class GeminiLiveClient {
     this.audioDestination = this.audioContext.createMediaStreamDestination();
 
     this.ws.onopen = () => {
+      this.reconnectAttempts = 0;
+      this.isExplicitDisconnect = false;
       console.log("Gemini WS connected, sending setup...");
       // Send setup message
       const setup = {
@@ -106,7 +114,19 @@ export class GeminiLiveClient {
 
     this.ws.onclose = (event) => {
       console.log("Gemini WS closed:", event.code, event.reason);
-      this.callbacks.onConnectionChange(false);
+      
+      if (!this.isExplicitDisconnect && this.reconnectAttempts < this.maxReconnectAttempts) {
+        this.reconnectAttempts++;
+        const delay = Math.pow(2, this.reconnectAttempts) * 1000;
+        console.log(`Attempting reconnect ${this.reconnectAttempts}/${this.maxReconnectAttempts} in ${delay}ms...`);
+        setTimeout(() => {
+          if (!this.isExplicitDisconnect) {
+            this.connect();
+          }
+        }, delay);
+      } else {
+        this.callbacks.onConnectionChange(false);
+      }
     };
   }
 
@@ -233,15 +253,30 @@ export class GeminiLiveClient {
   }
 
   disconnect() {
+    this.isExplicitDisconnect = true;
     this.stopAudioPlayback();
     if (this.ws) {
-      this.ws.close();
+      this.ws.onopen = null;
+      this.ws.onmessage = null;
+      this.ws.onerror = null;
+      this.ws.onclose = null;
+      try {
+        this.ws.close();
+      } catch (err) {
+        console.warn("Error closing WebSocket:", err);
+      }
       this.ws = null;
     }
     if (this.audioContext) {
-      this.audioContext.close();
+      try {
+        this.audioContext.close();
+      } catch (err) {
+        console.warn("Error closing AudioContext:", err);
+      }
       this.audioContext = null;
     }
+    this.audioDestination = null;
+    this.audioQueue = [];
   }
 
   // Audio playback
@@ -276,7 +311,7 @@ export class GeminiLiveClient {
     if (!this.audioContext) return;
 
     const buffer = this.audioContext.createBuffer(1, chunk.length, 24000);
-    buffer.copyToChannel(chunk, 0);
+    buffer.copyToChannel(new Float32Array(chunk) as Float32Array<ArrayBuffer>, 0);
 
     const source = this.audioContext.createBufferSource();
     source.buffer = buffer;
@@ -296,7 +331,7 @@ export class GeminiLiveClient {
     return this.audioDestination ? this.audioDestination.stream : null;
   }
 
-  private stopAudioPlayback() {
+  public stopAudioPlayback() {
     this.audioQueue = [];
     if (this.currentSourceNode) {
       try { this.currentSourceNode.stop(); } catch {}
@@ -315,15 +350,24 @@ export class GeminiLiveClient {
   }
 }
 
-// Audio capture utility — captures microphone as PCM 16kHz 16-bit LE chunks
+export interface AudioCaptureCallbacks {
+  onChunk: (base64Pcm: string) => void;
+  onSpeechDetected?: () => void;
+}
+
+// Audio capture utility — captures microphone as PCM 16kHz 16-bit LE chunks via modern AudioWorkletNode
 export class AudioCapture {
   private stream: MediaStream | null = null;
   private audioContext: AudioContext | null = null;
-  private processor: ScriptProcessorNode | null = null;
-  private onChunk: (base64Pcm: string) => void;
+  private workletNode: AudioWorkletNode | null = null;
+  private callbacks: AudioCaptureCallbacks;
 
-  constructor(onChunk: (base64Pcm: string) => void) {
-    this.onChunk = onChunk;
+  constructor(callbacks: AudioCaptureCallbacks | ((base64Pcm: string) => void)) {
+    if (typeof callbacks === "function") {
+      this.callbacks = { onChunk: callbacks };
+    } else {
+      this.callbacks = callbacks;
+    }
   }
 
   async start() {
@@ -332,35 +376,85 @@ export class AudioCapture {
     });
 
     this.audioContext = new AudioContext({ sampleRate: 16000 });
+
+    // Dynamic inline AudioWorklet registration to bypass static file imports and bundle constraints
+    const workletCode = `
+      class PCMProcessor extends AudioWorkletProcessor {
+        constructor() {
+          super();
+          this.speechFramesCount = 0;
+          this.threshold = 0.015; // RMS voice activity threshold
+        }
+
+        process(inputs, outputs, parameters) {
+          const input = inputs[0];
+          if (input && input[0]) {
+            const channelData = input[0]; // Float32Array
+            
+            // Calculate Root Mean Square (RMS) amplitude for local VAD
+            let sum = 0;
+            for (let i = 0; i < channelData.length; i++) {
+              sum += channelData[i] * channelData[i];
+            }
+            const rms = Math.sqrt(sum / channelData.length);
+            
+            // If RMS exceeds threshold for ~100ms (3 frames @ 4096 size)
+            if (rms > this.threshold) {
+              this.speechFramesCount++;
+              if (this.speechFramesCount >= 3) {
+                this.port.postMessage({ type: "speech_detected" });
+              }
+            } else {
+              this.speechFramesCount = 0;
+            }
+
+            // Convert Float32 to Int16 PCM
+            const pcm = new Int16Array(channelData.length);
+            for (let i = 0; i < channelData.length; i++) {
+              const s = Math.max(-1, Math.min(1, channelData[i]));
+              pcm[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+            }
+            this.port.postMessage({ type: "pcm_chunk", buffer: pcm.buffer }, [pcm.buffer]);
+          }
+          return true;
+        }
+      }
+      registerProcessor('pcm-worklet-processor', PCMProcessor);
+    `;
+
+    const blob = new Blob([workletCode], { type: "application/javascript" });
+    const url = URL.createObjectURL(blob);
+    await this.audioContext.audioWorklet.addModule(url);
+    URL.revokeObjectURL(url); // Immediate cleanup
+
     const source = this.audioContext.createMediaStreamSource(this.stream);
 
-    // Use ScriptProcessorNode for PCM access (AudioWorklet would be better for prod)
-    this.processor = this.audioContext.createScriptProcessor(4096, 1, 1);
-    this.processor.onaudioprocess = (e) => {
-      const input = e.inputBuffer.getChannelData(0);
-      // Convert Float32 to Int16 PCM
-      const pcm = new Int16Array(input.length);
-      for (let i = 0; i < input.length; i++) {
-        const s = Math.max(-1, Math.min(1, input[i]));
-        pcm[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+    this.workletNode = new AudioWorkletNode(this.audioContext, "pcm-worklet-processor");
+    this.workletNode.port.onmessage = (e) => {
+      const msg = e.data;
+      if (msg.type === "speech_detected") {
+        if (this.callbacks.onSpeechDetected) {
+          this.callbacks.onSpeechDetected();
+        }
+      } else if (msg.type === "pcm_chunk") {
+        const pcmBuffer = msg.buffer as ArrayBuffer;
+        const bytes = new Uint8Array(pcmBuffer);
+        let binary = "";
+        for (let i = 0; i < bytes.length; i++) {
+          binary += String.fromCharCode(bytes[i]);
+        }
+        this.callbacks.onChunk(btoa(binary));
       }
-      // Convert to base64
-      const bytes = new Uint8Array(pcm.buffer as ArrayBuffer);
-      let binary = "";
-      for (let i = 0; i < bytes.length; i++) {
-        binary += String.fromCharCode(bytes[i]);
-      }
-      this.onChunk(btoa(binary));
     };
 
-    source.connect(this.processor);
-    this.processor.connect(this.audioContext.destination);
+    source.connect(this.workletNode);
+    this.workletNode.connect(this.audioContext.destination);
   }
 
   stop() {
-    if (this.processor) {
-      this.processor.disconnect();
-      this.processor = null;
+    if (this.workletNode) {
+      this.workletNode.disconnect();
+      this.workletNode = null;
     }
     if (this.audioContext) {
       this.audioContext.close();

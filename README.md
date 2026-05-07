@@ -58,6 +58,7 @@ Live API:
 
 ## Examples
 
+*   **[Learning English Interview (React + TypeScript) example](./learning-english-interview/README.md)**: Full-stack voice agent showcases. Builds a conversational React interface featuring background-thread AudioWorklets, 0ms local VAD barge-in checks, asynchronous canvas frame-encoding, local audio channel recorders, and post-session REST Q&A synthesis.
 *   **[Gen AI SDK Python example](./gemini-live-genai-python-sdk/README.md)**: Recommended for ease of use. Connect to the Gemini Live API using the Gen AI SDK to build a real-time multimodal application with a Python backend.
 *   **[Epheremal tokens and raw WebSocket example](./gemini-live-ephemeral-tokens-websocket/README.md)**: RAW protocol control. Connect to the Gemini Live API using WebSockets to build a real-time multimodal application with a JavaScript frontend and a Python backend.
 *   **[Command-line Python example](./command-line/python/README.md)**: A minimal command-line app that streams microphone audio to the Gemini Live API and plays back the response in real time using Python.
