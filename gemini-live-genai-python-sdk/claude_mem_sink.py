@@ -11,8 +11,12 @@ Entirely opt-in (CLAUDE_MEM_ENABLED) and entirely fail-soft: a missing/unreachab
 worker, or any error here, must never disturb the live audio session.
 """
 import asyncio
+import base64
+import hashlib
+import json
 import logging
 import os
+import re
 import uuid
 
 import httpx
@@ -39,6 +43,23 @@ VISION_PROMPT = (
     'Previous description: "{prev}"\n'
     "If this frame is materially the same as the previous description (same "
     "people, same activity, same setting), reply with exactly: " + NO_CHANGE_TOKEN
+)
+
+
+# Talk of planning an event (party, wedding, dinner, gathering...) triggers an
+# automatic invitation image. Deliberately broad: any "plan/organize/throw/host
+# ... event/party/..." phrasing, plus common named party types.
+EVENT_PLANNING_PATTERN = re.compile(
+    r"\b(?:plan(?:ning)?|organi[sz](?:e|ing)|throw(?:ing)?|host(?:ing)?|"
+    r"arrang(?:e|ing)|put(?:ting)?\s+together|set(?:ting)?\s+up)\b"
+    r".{0,40}\b(?:event|party|wedding|birthday|anniversary|gathering|"
+    r"meet[- ]?up|celebration|dinner|get[- ]?together|reunion|shower|bbq|"
+    r"barbecue|cookout|ceremony|festival|gala|launch|fundraiser|housewarming|"
+    r"picnic|brunch)\b"
+    r"|\b(?:birthday|surprise|dinner|house|launch|garden|block|costume|holiday|"
+    r"viewing|watch)\s+part(?:y|ies)\b"
+    r"|\bbaby\s+shower\b|\bbridal\s+shower\b|\bbachelor(?:ette)?\s+party\b",
+    re.IGNORECASE | re.DOTALL,
 )
 
 
@@ -81,6 +102,28 @@ class MemorySink:
         self._last_captioned_seq = 0    # last frame seq we sent to the captioner
         self._prev_caption = ""         # context for the NO_CHANGE delta gate
         self._vision_task = None
+
+        # --- Event-invitation trigger -----------------------------------------
+        # When the people in the session talk about planning an event, generate
+        # an invitation image (details they spoke about + themed imagery) and
+        # push it to the frontend. Opt-in and fail-soft like the captioner.
+        self.invitation_enabled = (
+            os.getenv("CLAUDE_MEM_INVITATION_ENABLED", "true").lower() in ("1", "true", "yes", "on")
+            and bool(gemini_api_key)
+        )
+        # Default to Nano Banana 2 (flash, legible in-image text — best for
+        # invitations). Needs a paid image-gen quota. Override with
+        # CLAUDE_MEM_INVITATION_MODEL (e.g. gemini-3-pro-image-preview for the
+        # sharpest text, or gemini-2.5-flash-image as a validated fallback).
+        self.invitation_model = os.getenv(
+            "CLAUDE_MEM_INVITATION_MODEL", "gemini-3.1-flash-image-preview"
+        )
+        self.invitation_aspect_ratio = os.getenv("CLAUDE_MEM_INVITATION_ASPECT_RATIO", "3:4")
+        # Async callback (set by GeminiLive) that pushes an event to the frontend.
+        self.emit = None
+        self._recent_turns = []            # rolling conversation context
+        self._invitation_task = None       # single-flight guard
+        self._last_event_signature = None  # don't regenerate the same event
 
     async def on_session_start(self):
         """Create the claude-mem session row (POST /api/sessions/init)."""
@@ -138,6 +181,12 @@ class MemorySink:
             self._vision_task.cancel()
             try:
                 await self._vision_task
+            except (asyncio.CancelledError, Exception):
+                pass
+        if self._invitation_task:
+            self._invitation_task.cancel()
+            try:
+                await self._invitation_task
             except (asyncio.CancelledError, Exception):
                 pass
         await self._flush_turn()
@@ -199,6 +248,131 @@ class MemorySink:
             tool_input={"user": user_text},
             tool_response={"gemini": gemini_text},
         )
+        combined = f"User: {user_text}\nAssistant: {gemini_text}".strip()
+        self._recent_turns.append(combined)
+        self._recent_turns = self._recent_turns[-12:]
+        self._maybe_trigger_invitation(combined)
+
+    def _maybe_trigger_invitation(self, turn_text):
+        """If this turn talks about planning an event, kick off invitation gen."""
+        if not self.invitation_enabled or self.emit is None or not turn_text:
+            return
+        if not EVENT_PLANNING_PATTERN.search(turn_text):
+            return
+        if self._invitation_task and not self._invitation_task.done():
+            return  # one invitation in flight at a time
+        conversation = "\n".join(self._recent_turns[-8:])
+        self._invitation_task = asyncio.create_task(
+            self._generate_and_emit_invitation(conversation)
+        )
+        logger.info("claude-mem event-planning detected -> generating invitation")
+
+    async def _generate_and_emit_invitation(self, conversation):
+        """Extract event details, render an invitation image, push it to the UI.
+
+        Fail-soft end to end: any error is swallowed and the session continues.
+        """
+        try:
+            details = await self._extract_event_details(conversation)
+        except Exception as e:
+            logger.debug(f"claude-mem invitation extraction failed: {e}")
+            return
+        if not isinstance(details, dict):
+            return
+        signature = hashlib.sha1(
+            json.dumps(details, sort_keys=True).encode("utf-8")
+        ).hexdigest()
+        if signature == self._last_event_signature:
+            return  # already made an invitation for this same event
+        try:
+            image_base64, mime_type = await self._render_invitation_image(details)
+        except Exception as e:
+            logger.debug(f"claude-mem invitation image failed: {e}")
+            return
+        if not image_base64:
+            return
+        self._last_event_signature = signature
+        try:
+            await self.emit({
+                "type": "event_invitation",
+                "details": details,
+                "mime_type": mime_type,
+                "image_base64": image_base64,
+            })
+        except Exception as e:
+            logger.debug(f"claude-mem invitation emit failed: {e}")
+        # Record that we generated an invitation (fail-soft; shows up in memory).
+        await self._post_observation(
+            tool_name="EventInvitationGenerated",
+            tool_input={"event": details},
+            tool_response={"status": "invitation image generated and shown to the user"},
+        )
+
+    async def _extract_event_details(self, conversation):
+        """Pull structured event details + an art-direction prompt from the talk."""
+        prompt = (
+            "The people in this conversation are planning an event. Extract the "
+            "event into a JSON object with EXACTLY these string keys: title, date, "
+            "time, location, host, guests, description, image_prompt. Use an empty "
+            "string for anything not mentioned. 'image_prompt' must be a vivid, "
+            "concrete art-direction description for a beautiful, themed event "
+            "invitation image. Respond with ONLY the JSON object, no prose.\n\n"
+            "Conversation:\n" + conversation
+        )
+        response = await self._genai.aio.models.generate_content(
+            model=self.vision_model,
+            contents=[types.Part(text=prompt)],
+        )
+        text = (response.text or "").strip()
+        # Strip ```json fences if the model added them.
+        text = re.sub(r"^```(?:json)?\s*|\s*```$", "", text, flags=re.IGNORECASE).strip()
+        return json.loads(text)
+
+    async def _render_invitation_image(self, details):
+        """Render the invitation as an image; return (base64_str, mime_type).
+
+        Per the google-genai image API, the returned part.inline_data.data is
+        base64-encoded text (NOT raw bytes), so we pass it straight to the
+        browser as a data URL; if a future SDK returns raw bytes we b64-encode.
+        """
+        def field(key, label):
+            value = (details.get(key) or "").strip()
+            return f"{label}: {value}\n" if value else ""
+
+        title = (details.get("title") or "You are invited!").strip()
+        prompt = (
+            "Design a single, finished event invitation graphic in portrait "
+            "orientation. Render this text legibly and beautifully integrated into "
+            "the artwork (spell everything correctly):\n"
+            f"{title}\n"
+            + field("date", "Date")
+            + field("time", "Time")
+            + field("location", "Location")
+            + field("host", "Hosted by")
+            + "\nArt direction: "
+            + (details.get("image_prompt") or "warm, festive, inviting, tasteful")
+            + ". Include themed decorative imagery. Polished invitation/poster layout."
+        )
+        response = await self._genai.aio.models.generate_content(
+            model=self.invitation_model,
+            contents=[types.Part(text=prompt)],
+            config=types.GenerateContentConfig(
+                response_modalities=["TEXT", "IMAGE"],
+                image_config=types.ImageConfig(aspect_ratio=self.invitation_aspect_ratio),
+            ),
+        )
+        for candidate in (response.candidates or []):
+            content = getattr(candidate, "content", None)
+            for part in (getattr(content, "parts", None) or []):
+                inline = getattr(part, "inline_data", None)
+                data = getattr(inline, "data", None) if inline else None
+                if not data:
+                    continue
+                mime_type = getattr(inline, "mime_type", None) or "image/png"
+                if isinstance(data, bytes):
+                    data = base64.b64encode(data).decode("ascii")
+                return data, mime_type
+        return None, None
 
     async def _post_observation(self, tool_name, tool_input, tool_response):
         await self._post(

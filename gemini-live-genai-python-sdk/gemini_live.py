@@ -99,6 +99,10 @@ class GeminiLive:
                     logger.error(f"send_text error: {e}\n{traceback.format_exc()}")
 
             event_queue = asyncio.Queue()
+            # Let the memory sink push events (e.g. event invitations) back to
+            # the frontend through the same queue the receive loop drains.
+            if memory_sink:
+                memory_sink.emit = event_queue.put
 
             async def receive_loop():
                 try:

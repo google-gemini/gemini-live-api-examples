@@ -309,6 +309,40 @@ video {
   border-bottom-left-radius: 0.25rem;
 }
 
+.message.invitation {
+  align-self: center;
+  max-width: 92%;
+  padding: 0.4rem;
+  background: linear-gradient(135deg, #fff8f2, #f3e9ff);
+  border: 1px solid #e7d8ff;
+  box-shadow: 0 6px 18px rgba(80, 40, 120, 0.18);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  animation: invitation-pop 0.35s ease-out;
+}
+
+.invitation-img {
+  width: 100%;
+  max-width: 360px;
+  border-radius: 0.75rem;
+  display: block;
+}
+
+.invitation-caption {
+  font-weight: 600;
+  font-size: 0.9rem;
+  text-align: center;
+  color: var(--text-color);
+  padding: 0 0.25rem 0.25rem;
+}
+
+@keyframes invitation-pop {
+  from { transform: scale(0.96); opacity: 0; }
+  to { transform: scale(1); opacity: 1; }
+}
+
 input[type="text"] {
   flex: 1;
   padding: 0.75rem;

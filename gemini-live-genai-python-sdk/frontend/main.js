@@ -105,7 +105,36 @@ function handleJsonMessage(msg) {
     } else {
       currentGeminiMessageDiv = appendMessage("gemini", msg.text);
     }
+  } else if (msg.type === "event_invitation") {
+    appendInvitation(msg);
   }
+}
+
+function appendInvitation(msg) {
+  const details = msg.details || {};
+  const card = document.createElement("div");
+  card.className = "message invitation";
+
+  const img = document.createElement("img");
+  img.className = "invitation-img";
+  img.src = `data:${msg.mime_type || "image/png"};base64,${msg.image_base64}`;
+  img.alt = details.title || "Event invitation";
+  card.appendChild(img);
+
+  const caption = document.createElement("div");
+  caption.className = "invitation-caption";
+  const line = [
+    details.title,
+    [details.date, details.time].filter(Boolean).join(" "),
+    details.location,
+  ]
+    .filter(Boolean)
+    .join(" • ");
+  caption.textContent = line || "You're invited!";
+  card.appendChild(caption);
+
+  chatLog.appendChild(card);
+  chatLog.scrollTop = chatLog.scrollHeight;
 }
 
 function appendMessage(type, text) {
