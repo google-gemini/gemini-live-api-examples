@@ -10,17 +10,36 @@ feed the existing pipeline.
 Entirely opt-in (CLAUDE_MEM_ENABLED) and entirely fail-soft: a missing/unreachable
 worker, or any error here, must never disturb the live audio session.
 """
+import asyncio
 import logging
 import os
 import uuid
 
 import httpx
+from google import genai
+from google.genai import types
 
 logger = logging.getLogger(__name__)
 
 # The synthetic tool name a conversational turn is recorded under.
 TURN_TOOL_NAME = "GeminiLiveTurn"
+# The synthetic tool name an autonomous video-frame description is recorded under.
+VISION_TOOL_NAME = "GeminiLiveVision"
 PLATFORM_SOURCE = "gemini-live"
+
+# The captioner is deliberately dumb: it turns the current frame into a plain
+# textual representation (or NO_CHANGE). ALL judgement about what is worth
+# remembering / what to skip lives in the observer mode (gemini-live.json).
+NO_CHANGE_TOKEN = "NO_CHANGE"
+VISION_PROMPT = (
+    "You are an automatic camera feed for a memory system. Describe what is "
+    "currently visible in this frame in 1-3 concise, plain sentences — who is "
+    "present, what they are doing, and the setting around them. Report only "
+    "what you can see; do not editorialize.\n"
+    'Previous description: "{prev}"\n'
+    "If this frame is materially the same as the previous description (same "
+    "people, same activity, same setting), reply with exactly: " + NO_CHANGE_TOKEN
+)
 
 
 def make_memory_sink_if_enabled():
@@ -45,6 +64,24 @@ class MemorySink:
         self._user_text = []
         self._gemini_text = []
 
+        # --- Autonomous video captioner ---------------------------------------
+        # Turns the live video into a steady stream of textual frame
+        # descriptions even when the user is silent, so the observer keeps
+        # building presence observations without any user intervention.
+        gemini_api_key = os.getenv("GEMINI_API_KEY")
+        self.vision_enabled = (
+            os.getenv("CLAUDE_MEM_VISION_ENABLED", "true").lower() in ("1", "true", "yes", "on")
+            and bool(gemini_api_key)
+        )
+        self.vision_model = os.getenv("CLAUDE_MEM_VISION_MODEL", "gemini-flash-latest")
+        self.vision_interval = float(os.getenv("CLAUDE_MEM_VISION_INTERVAL_SECONDS", "5"))
+        self._genai = genai.Client(api_key=gemini_api_key) if self.vision_enabled else None
+        self._latest_frame = None       # most-recent JPEG bytes (overwritten, never queued)
+        self._frame_seq = 0             # bumped on every new frame
+        self._last_captioned_seq = 0    # last frame seq we sent to the captioner
+        self._prev_caption = ""         # context for the NO_CHANGE delta gate
+        self._vision_task = None
+
     async def on_session_start(self):
         """Create the claude-mem session row (POST /api/sessions/init)."""
         await self._post(
@@ -56,6 +93,23 @@ class MemorySink:
                 "platformSource": PLATFORM_SOURCE,
             },
         )
+        if self.vision_enabled:
+            self._vision_task = asyncio.create_task(self._caption_loop())
+            logger.info(
+                f"claude-mem video captioner started "
+                f"(model={self.vision_model}, every {self.vision_interval}s)"
+            )
+
+    def note_latest_frame(self, jpeg_bytes):
+        """Record the most-recent video frame (the exact bytes sent to Gemini).
+
+        Cheap and non-blocking: only keeps the latest frame. Safe to call when
+        vision is disabled (no-op). Called from GeminiLive.send_video.
+        """
+        if not self.vision_enabled or not jpeg_bytes:
+            return
+        self._latest_frame = jpeg_bytes
+        self._frame_seq += 1
 
     async def on_event(self, event):
         """Consume one event from the GeminiLive drain loop."""
@@ -79,12 +133,59 @@ class MemorySink:
             )
 
     async def on_session_end(self):
-        """Flush any trailing partial turn and close the HTTP client."""
+        """Stop the captioner, flush any trailing partial turn, close the client."""
+        if self._vision_task:
+            self._vision_task.cancel()
+            try:
+                await self._vision_task
+            except (asyncio.CancelledError, Exception):
+                pass
         await self._flush_turn()
         try:
             await self._client.aclose()
         except Exception as e:
             logger.debug(f"claude-mem sink close failed: {e}")
+
+    async def _caption_loop(self):
+        """Periodically caption the latest frame and feed it to the observer.
+
+        Fail-soft: any captioning/posting error is swallowed and the loop
+        continues. Skips when no new frame has arrived (camera off/paused) and
+        when the captioner reports NO_CHANGE.
+        """
+        try:
+            while True:
+                await asyncio.sleep(self.vision_interval)
+                if self._latest_frame is None or self._frame_seq == self._last_captioned_seq:
+                    continue  # nothing new to look at
+                frame = self._latest_frame
+                self._last_captioned_seq = self._frame_seq
+                try:
+                    caption = await self._caption_frame(frame)
+                except Exception as e:
+                    logger.debug(f"claude-mem vision caption failed: {e}")
+                    continue
+                if not caption or caption.upper().startswith(NO_CHANGE_TOKEN):
+                    continue
+                self._prev_caption = caption
+                await self._post_observation(
+                    tool_name=VISION_TOOL_NAME,
+                    tool_input={"frame": "current camera/screen frame"},
+                    tool_response={"description": caption},
+                )
+        except asyncio.CancelledError:
+            pass
+
+    async def _caption_frame(self, jpeg_bytes):
+        """Turn one JPEG frame into a plain textual description (or NO_CHANGE)."""
+        response = await self._genai.aio.models.generate_content(
+            model=self.vision_model,
+            contents=[
+                types.Part.from_bytes(data=jpeg_bytes, mime_type="image/jpeg"),
+                types.Part(text=VISION_PROMPT.format(prev=self._prev_caption or "(none yet)")),
+            ],
+        )
+        return (response.text or "").strip()
 
     async def _flush_turn(self):
         user_text = "".join(self._user_text).strip()

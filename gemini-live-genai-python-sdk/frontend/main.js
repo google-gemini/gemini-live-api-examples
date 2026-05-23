@@ -15,9 +15,33 @@ const videoPreview = document.getElementById("video-preview");
 const videoPlaceholder = document.getElementById("video-placeholder");
 const connectBtn = document.getElementById("connectBtn");
 const chatLog = document.getElementById("chat-log");
+const modelFeed = document.getElementById("model-feed");
+const modelFrame = document.getElementById("model-frame");
+const modelFeedStats = document.getElementById("model-feed-stats");
 
 let currentGeminiMessageDiv = null;
 let currentUserMessageDiv = null;
+let modelFrameCount = 0;
+
+// Send a captured frame to Gemini AND mirror it in the picture-in-picture
+// feed so you can see exactly what the model receives. Shared by camera + screen.
+function sendFrameToModel(base64Data) {
+  if (!geminiClient.isConnected()) return;
+  geminiClient.sendImage(base64Data);
+
+  modelFrameCount++;
+  modelFrame.src = "data:image/jpeg;base64," + base64Data;
+  modelFeed.classList.remove("hidden");
+  const kb = Math.round((base64Data.length * 3) / 4 / 1024);
+  modelFeedStats.textContent = `→ model · #${modelFrameCount} · ${kb} KB`;
+}
+
+function hideModelFeed() {
+  modelFeed.classList.add("hidden");
+  modelFrame.removeAttribute("src");
+  modelFrameCount = 0;
+  modelFeedStats.textContent = "waiting…";
+}
 
 const mediaHandler = new MediaHandler();
 const geminiClient = new GeminiClient({
@@ -137,6 +161,7 @@ micBtn.onclick = async () => {
 cameraBtn.onclick = async () => {
   if (cameraBtn.textContent === "Stop Camera") {
     mediaHandler.stopVideo(videoPreview);
+    hideModelFeed();
     cameraBtn.textContent = "Start Camera";
     screenBtn.textContent = "Share Screen";
     videoPlaceholder.classList.remove("hidden");
@@ -148,11 +173,7 @@ cameraBtn.onclick = async () => {
     }
 
     try {
-      await mediaHandler.startVideo(videoPreview, (base64Data) => {
-        if (geminiClient.isConnected()) {
-          geminiClient.sendImage(base64Data);
-        }
-      });
+      await mediaHandler.startVideo(videoPreview, sendFrameToModel);
       cameraBtn.textContent = "Stop Camera";
       screenBtn.textContent = "Share Screen";
       videoPlaceholder.classList.add("hidden");
@@ -165,6 +186,7 @@ cameraBtn.onclick = async () => {
 screenBtn.onclick = async () => {
   if (screenBtn.textContent === "Stop Sharing") {
     mediaHandler.stopVideo(videoPreview);
+    hideModelFeed();
     screenBtn.textContent = "Share Screen";
     cameraBtn.textContent = "Start Camera";
     videoPlaceholder.classList.remove("hidden");
@@ -178,13 +200,10 @@ screenBtn.onclick = async () => {
     try {
       await mediaHandler.startScreen(
         videoPreview,
-        (base64Data) => {
-          if (geminiClient.isConnected()) {
-            geminiClient.sendImage(base64Data);
-          }
-        },
+        sendFrameToModel,
         () => {
           // onEnded callback (e.g. user stopped sharing from browser)
+          hideModelFeed();
           screenBtn.textContent = "Share Screen";
           videoPlaceholder.classList.remove("hidden");
         }
@@ -219,6 +238,7 @@ function resetUI() {
 
   mediaHandler.stopAudio();
   mediaHandler.stopVideo(videoPreview);
+  hideModelFeed();
   videoPlaceholder.classList.remove("hidden");
 
   micBtn.textContent = "Start Mic";
@@ -233,6 +253,7 @@ function showSessionEnd() {
   sessionEndSection.classList.remove("hidden");
   mediaHandler.stopAudio();
   mediaHandler.stopVideo(videoPreview);
+  hideModelFeed();
 }
 
 restartBtn.onclick = () => {

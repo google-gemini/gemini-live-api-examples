@@ -60,6 +60,15 @@
                 <div id="video-placeholder">Start camera to send video</div>
                 <video id="video-preview" autoplay playsinline muted></video>
                 <canvas id="video-canvas" style="display: none"></canvas>
+
+                <!-- Picture-in-picture: the exact JPEG frames being sent to Gemini -->
+                <div id="model-feed" class="model-feed hidden">
+                  <img id="model-frame" alt="Frame sent to Gemini" />
+                  <div class="model-feed-label">
+                    <span class="model-feed-dot"></span>
+                    <span id="model-feed-stats">waiting…</span>
+                  </div>
+                </div>
               </div>
 
               <div class="controls">

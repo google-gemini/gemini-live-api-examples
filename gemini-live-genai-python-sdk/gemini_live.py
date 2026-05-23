@@ -76,6 +76,9 @@ class GeminiLive:
                     while True:
                         chunk = await video_input_queue.get()
                         logger.info(f"Sending video frame to Gemini: {len(chunk)} bytes")
+                        # Tee the exact frame to the memory captioner (no-op if disabled).
+                        if memory_sink:
+                            memory_sink.note_latest_frame(chunk)
                         await session.send_realtime_input(
                             video=types.Blob(data=chunk, mime_type="image/jpeg")
                         )
