@@ -91,7 +91,7 @@ class MemorySink:
             and bool(gemini_api_key)
         )
         self.vision_model = os.getenv("CLAUDE_MEM_VISION_MODEL", "gemini-flash-latest")
-        self.vision_interval = float(os.getenv("CLAUDE_MEM_VISION_INTERVAL_SECONDS", "5"))
+        self.vision_interval = 5.0  # seconds between frame captions
         self._genai = genai.Client(api_key=gemini_api_key) if self.vision_enabled else None
         self._latest_frame = None       # most-recent JPEG bytes (overwritten, never queued)
         self._frame_seq = 0             # bumped on every new frame
