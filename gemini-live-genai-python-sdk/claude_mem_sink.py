@@ -131,6 +131,23 @@ class MemorySink:
         self._invitation_task = None       # single-flight guard
         self._last_event_signature = None  # don't regenerate the same event
 
+        # --- Live memory feed -------------------------------------------------
+        # Stream the observations the worker extracts back to the frontend in
+        # real time, so the user can watch the memory build as the session
+        # happens. This reads back the SAME observations this pipeline already
+        # stores -- it invents no new storage -- and pushes each new one through
+        # `self.emit`, exactly like the invitation card. Opt-in and fail-soft.
+        self.memory_feed_enabled = (
+            os.getenv("CLAUDE_MEM_MEMORY_FEED_ENABLED", "true").lower()
+            in ("1", "true", "yes", "on")
+        )
+        self.memory_feed_interval = 4.0  # seconds between memory polls
+        self._memory_feed_task = None
+        # Only stream observations created AFTER this session starts; seeded with
+        # the latest existing observation id so the feed begins empty and fills
+        # live as the worker extracts new memories.
+        self._obs_high_water = 0
+
     async def on_session_start(self):
         """Create the claude-mem session row (POST /api/sessions/init)."""
         await self._post(
@@ -147,6 +164,12 @@ class MemorySink:
             logger.info(
                 f"claude-mem video captioner started "
                 f"(model={self.vision_model}, every {self.vision_interval}s)"
+            )
+        if self.memory_feed_enabled:
+            self._memory_feed_task = asyncio.create_task(self._memory_feed_loop())
+            logger.info(
+                f"claude-mem live memory feed started "
+                f"(every {self.memory_feed_interval}s)"
             )
 
     def note_latest_frame(self, jpeg_bytes):
@@ -193,6 +216,12 @@ class MemorySink:
             self._invitation_task.cancel()
             try:
                 await self._invitation_task
+            except (asyncio.CancelledError, Exception):
+                pass
+        if self._memory_feed_task:
+            self._memory_feed_task.cancel()
+            try:
+                await self._memory_feed_task
             except (asyncio.CancelledError, Exception):
                 pass
         await self._flush_turn()
@@ -245,6 +274,76 @@ class MemorySink:
             ],
         )
         return (response.text or "").strip()
+
+    # --- Live memory feed -----------------------------------------------------
+    async def _memory_feed_loop(self):
+        """Poll the worker for newly-extracted observations and push each to the
+        frontend as an `observation` event.
+
+        Fail-soft: any poll/emit error is swallowed and the loop continues; it
+        must never disturb the live audio session. Mirrors `_caption_loop`.
+        """
+        try:
+            # Seed the high-water mark with the latest existing observation so we
+            # only stream memories formed during THIS session.
+            self._obs_high_water = await self._latest_observation_id()
+            while True:
+                await asyncio.sleep(self.memory_feed_interval)
+                if self.emit is None:
+                    continue  # frontend channel not wired yet
+                try:
+                    fresh = await self._fetch_new_observations()
+                except Exception as e:
+                    logger.debug(f"claude-mem memory feed poll failed: {e}")
+                    continue
+                for obs in fresh:
+                    try:
+                        await self.emit({
+                            "type": "observation",
+                            "observation": {
+                                "id": obs.get("id"),
+                                "obs_type": obs.get("type"),
+                                "title": obs.get("title"),
+                                "subtitle": obs.get("subtitle"),
+                            },
+                        })
+                    except Exception as e:
+                        logger.debug(f"claude-mem memory feed emit failed: {e}")
+        except asyncio.CancelledError:
+            pass
+
+    async def _fetch_new_observations(self, limit=25):
+        """Return observations newer than the high-water mark, oldest-first.
+
+        Order-independent: filters by id > high_water and re-sorts, so it does
+        not rely on the endpoint's sort order.
+        """
+        data = await self._get_json(
+            "/api/observations", {"project": self.project, "limit": limit}
+        )
+        items = data.get("items") if isinstance(data, dict) else None
+        if not isinstance(items, list):
+            return []
+        fresh = [
+            obs for obs in items
+            if isinstance(obs, dict)
+            and isinstance(obs.get("id"), int)
+            and obs["id"] > self._obs_high_water
+        ]
+        fresh.sort(key=lambda obs: obs["id"])
+        if fresh:
+            self._obs_high_water = max(self._obs_high_water, fresh[-1]["id"])
+        return fresh
+
+    async def _latest_observation_id(self):
+        """Newest observation id for this project (0 if none / worker down)."""
+        data = await self._get_json(
+            "/api/observations", {"project": self.project, "limit": 1}
+        )
+        items = data.get("items") if isinstance(data, dict) else None
+        if isinstance(items, list) and items and isinstance(items[0].get("id"), int):
+            return items[0]["id"]
+        return 0
 
     async def _flush_turn(self):
         user_text = "".join(self._user_text).strip()
