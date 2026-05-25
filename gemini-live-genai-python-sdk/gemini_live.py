@@ -47,8 +47,8 @@ class GeminiLive:
         if memory_sink:
             session_start_context = await memory_sink.fetch_session_start_context()
             if session_start_context:
-                system_instruction_text += live["memory_context_section"].format(
-                    session_start_context=session_start_context
+                system_instruction_text += live["memory_context_section"].replace(
+                    "{session_start_context}", session_start_context
                 )
             system_instruction_text += live["memory_recall_instructions"]
             memory_tools, memory_tool_mapping = memory_sink.live_tools()

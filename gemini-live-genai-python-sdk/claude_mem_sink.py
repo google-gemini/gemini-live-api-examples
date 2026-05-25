@@ -237,9 +237,10 @@ class MemorySink:
             model=self.vision_model,
             contents=[
                 types.Part.from_bytes(data=jpeg_bytes, mime_type="image/jpeg"),
-                types.Part(text=VISION_PROMPT.format(
-                    prev=self._prev_caption or "(none yet)",
-                    no_change_token=NO_CHANGE_TOKEN,
+                types.Part(text=(
+                    VISION_PROMPT
+                    .replace("{no_change_token}", NO_CHANGE_TOKEN)
+                    .replace("{prev}", self._prev_caption or "(none yet)")
                 )),
             ],
         )
@@ -319,8 +320,8 @@ class MemorySink:
 
     async def _extract_event_details(self, conversation):
         """Pull structured event details + an art-direction prompt from the talk."""
-        prompt = PROMPTS["event_invitation"]["extraction_prompt"].format(
-            conversation=conversation
+        prompt = PROMPTS["event_invitation"]["extraction_prompt"].replace(
+            "{conversation}", conversation
         )
         response = await self._genai.aio.models.generate_content(
             model=self.vision_model,
