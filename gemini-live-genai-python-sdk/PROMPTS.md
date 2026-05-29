@@ -87,14 +87,14 @@ Each entry below is a prompt now sourced from `prompts.json`. The key path
   your camera/screen"). Sent as the Gemini Live `system_instruction`.
 
 - **Key:** `live_assistant.memory_context_section` (placeholder `{session_start_context}`)
-- **Used by:** `gemini_live.py`, only when `CLAUDE_MEM_ENABLED`
+- **Used by:** `gemini_live.py` (whenever recent context exists for the session)
 - **Does:** prepends the assistant's "memory of past sessions." The
   `{session_start_context}` slot is filled at runtime with the recent claude-mem
   summary fetched from `GET /api/context/recent` — so the assistant *starts each
   session already remembering* what it recently saw.
 
 - **Key:** `live_assistant.memory_recall_instructions`
-- **Used by:** `gemini_live.py`, only when `CLAUDE_MEM_ENABLED`
+- **Used by:** `gemini_live.py` (the memory-recall tools are always registered)
 - **Does:** teaches the assistant the two-step recall protocol — call
   `get_memory_timeline` first, then `get_memory_observations` for detail. Appended
   to the system instruction.

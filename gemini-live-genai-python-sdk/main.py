@@ -7,7 +7,7 @@ import os
 from dotenv import load_dotenv
 from fastapi import FastAPI, Query, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, Response
+from fastapi.responses import Response
 from fastapi.staticfiles import StaticFiles
 from gemini_live import GeminiLive
 from prompts import PROMPTS
@@ -41,14 +41,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-# Serve static files
-app.mount("/static", StaticFiles(directory="frontend"), name="static")
-
-
-@app.get("/")
-async def root():
-    return FileResponse("frontend/index.html")
 
 
 @app.websocket("/ws")
@@ -266,6 +258,18 @@ async def twilio_stream(websocket: WebSocket):
         except Exception:
             pass
         logger.info("Twilio media stream WebSocket closed")
+
+
+# ─── Static frontend ──────────────────────────────────────────────────────────
+# Serve the Next.js static export (`web/out`, produced by `next build`) as the
+# whole site. This MUST be mounted last: a mount at "/" greedily matches every
+# HTTP path, so the explicit /twilio routes above have to be registered first
+# (the /ws + /twilio/stream WebSockets live on a separate ASGI scope and are
+# never shadowed). `html=True` serves out/index.html at "/" and out/404.html for
+# misses. We fall back to the legacy vanilla-JS `frontend/` dir when the export
+# hasn't been built (e.g. `python main.py` during local dev with `next dev`).
+_FRONTEND_DIR = "web/out" if os.path.isdir("web/out") else "frontend"
+app.mount("/", StaticFiles(directory=_FRONTEND_DIR, html=True), name="frontend")
 
 
 if __name__ == "__main__":

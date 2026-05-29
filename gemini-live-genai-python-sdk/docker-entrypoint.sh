@@ -40,18 +40,27 @@ export CLAUDE_MEM_LOG_LEVEL="${CLAUDE_MEM_LOG_LEVEL:-INFO}"
 mkdir -p "$CLAUDE_MEM_DATA_DIR"
 # A persisted volume keeps a stale worker.pid (recorded pid=1, always "alive" in
 # a fresh container) which would make the worker's duplicate-guard refuse to
-# boot. Clear it so the worker starts every time.
-rm -f "$CLAUDE_MEM_DATA_DIR/worker.pid"
+# boot. start_worker() below clears it before every (re)spawn.
 
 WORKER="$(npm root -g)/claude-mem/plugin/scripts/worker-service.cjs"
+WORKER_HEALTH="http://127.0.0.1:${CLAUDE_MEM_WORKER_PORT}/api/health"
+
+# `bun worker start` spawns a detached daemon and returns immediately; it is
+# idempotent (it skips the spawn when a live worker pid is already present), so
+# it is safe to call both at boot and on every failed health probe. Clear the
+# stale pid first so a dead worker is always respawned.
+start_worker() {
+  rm -f "$CLAUDE_MEM_DATA_DIR/worker.pid"
+  bun "$WORKER" start || true
+}
 
 echo "[entrypoint] starting claude-mem worker (provider=$CLAUDE_MEM_PROVIDER, mode=$CLAUDE_MEM_MODE)"
-bun "$WORKER" start &
+start_worker
 
 echo "[entrypoint] waiting for claude-mem worker health on :${CLAUDE_MEM_WORKER_PORT} ..."
 worker_ok=0
 for _ in $(seq 1 60); do
-  if curl -sf -m 2 "http://127.0.0.1:${CLAUDE_MEM_WORKER_PORT}/api/health" >/dev/null 2>&1; then
+  if curl -sf -m 2 "$WORKER_HEALTH" >/dev/null 2>&1; then
     worker_ok=1
     echo "[entrypoint] claude-mem worker healthy"
     break
@@ -63,8 +72,26 @@ if [[ "$worker_ok" -ne 1 ]]; then
   echo "[entrypoint] WARNING: claude-mem worker not healthy after 60s; app will run without memory" >&2
 fi
 
+# Supervisor: the worker daemon never restarts itself, so a crash would silently
+# kill memory for the whole machine while the app keeps serving. Poll health and
+# respawn on failure so the worker self-heals. Runs for the life of the container
+# (reparented to tini once the app exec's below). The Python sink notices the new
+# worker pid and re-attaches each live session's key, so in-flight sessions
+# recover within a few seconds of a respawn.
+supervise_worker() {
+  while true; do
+    sleep 5
+    if ! curl -sf -m 2 "$WORKER_HEALTH" >/dev/null 2>&1; then
+      echo "[entrypoint] claude-mem worker unhealthy; respawning" >&2
+      start_worker
+    fi
+  done
+}
+supervise_worker &
+
 # --- app -> worker wiring -----------------------------------------------------
-export CLAUDE_MEM_ENABLED=true
+# (No enable switch: claude-mem is always on. The app's sink is fail-soft if the
+# worker above never came up — it never needs to be told to turn memory off.)
 export CLAUDE_MEM_WORKER_URL="http://127.0.0.1:${CLAUDE_MEM_WORKER_PORT}"
 export CLAUDE_MEM_PROJECT="${CLAUDE_MEM_PROJECT:-gemini-live-mem}"
 

@@ -7,8 +7,10 @@ Claude Code PostToolUse hook uses. The worker queues it, runs its LLM extraction
 generator, and stores a structured observation. We invent no new storage; we just
 feed the existing pipeline.
 
-Entirely opt-in (CLAUDE_MEM_ENABLED) and entirely fail-soft: a missing/unreachable
-worker, or any error here, must never disturb the live audio session.
+claude-mem is the point of this project, not an add-on — so the sink is ALWAYS
+on. There is no enable/disable switch. It is, however, entirely fail-soft: a
+missing/unreachable worker, or any error here, degrades to "no memory this
+session" and must never disturb the live audio session.
 """
 import asyncio
 import base64
@@ -59,14 +61,15 @@ EVENT_PLANNING_PATTERN = re.compile(
 )
 
 
-def make_memory_sink_if_enabled(api_key=None):
-    """Return a MemorySink when CLAUDE_MEM_ENABLED is truthy, else None.
+def make_memory_sink(api_key=None):
+    """Return the MemorySink. claude-mem is core to this project, so it is always
+    created — there is no opt-in/opt-out switch. The sink is internally
+    fail-soft, so an unreachable worker degrades to "no memory" on its own; we
+    never express that by refusing to build the sink.
 
     This is the only symbol gemini_live.py needs to import, keeping claude-mem
     coupling to a single call site. `api_key` is the visitor's BYO Gemini key.
     """
-    if os.getenv("CLAUDE_MEM_ENABLED", "false").lower() not in ("1", "true", "yes", "on"):
-        return None
     return MemorySink(api_key=api_key)
 
 
@@ -157,13 +160,48 @@ class MemorySink:
         )
         self.memory_feed_interval = 4.0  # seconds between memory polls
         self._memory_feed_task = None
+
+        # --- Worker-restart recovery ------------------------------------------
+        # The visitor's key lives ONLY in the worker's in-memory session, so a
+        # worker restart (crash + supervisor respawn, redeploy) drops it and every
+        # later observation for this in-flight session would silently fail. Watch
+        # the worker's health pid; when it changes, re-send session init (which
+        # re-attaches the key) so generation recovers on its own. Fail-soft.
+        self.worker_guard_interval = 5.0  # seconds between worker health checks
+        self._worker_guard_task = None
+        self._worker_pid = None  # last-seen worker process id (restart sentinel)
         # Only stream observations created AFTER this session starts; seeded with
         # the latest existing observation id so the feed begins empty and fills
         # live as the worker extracts new memories.
         self._obs_high_water = 0
 
     async def on_session_start(self):
-        """Create the claude-mem session row (POST /api/sessions/init)."""
+        """Create the claude-mem session row and start the background loops."""
+        await self._init_session()
+        # Seed the restart sentinel with the worker we just initialized against,
+        # so the guard only re-inits on a genuine later restart (not at startup).
+        self._worker_pid = await self._worker_health_pid()
+        self._worker_guard_task = asyncio.create_task(self._worker_guard_loop())
+        if self.vision_enabled:
+            self._vision_task = asyncio.create_task(self._caption_loop())
+            logger.info(
+                f"claude-mem video captioner started "
+                f"(model={self.vision_model}, every {self.vision_interval}s)"
+            )
+        if self.memory_feed_enabled:
+            self._memory_feed_task = asyncio.create_task(self._memory_feed_loop())
+            logger.info(
+                f"claude-mem live memory feed started "
+                f"(every {self.memory_feed_interval}s)"
+            )
+
+    async def _init_session(self):
+        """POST /api/sessions/init — create/refresh this key's worker session.
+
+        Idempotent on the (patched) worker: re-calling it for the same
+        contentSessionId re-attaches the per-session key, which is exactly how we
+        recover generation after a worker restart.
+        """
         await self._post(
             "/api/sessions/init",
             {
@@ -177,18 +215,43 @@ class MemorySink:
                 "geminiApiKey": self._user_gemini_api_key,
             },
         )
-        if self.vision_enabled:
-            self._vision_task = asyncio.create_task(self._caption_loop())
-            logger.info(
-                f"claude-mem video captioner started "
-                f"(model={self.vision_model}, every {self.vision_interval}s)"
-            )
-        if self.memory_feed_enabled:
-            self._memory_feed_task = asyncio.create_task(self._memory_feed_loop())
-            logger.info(
-                f"claude-mem live memory feed started "
-                f"(every {self.memory_feed_interval}s)"
-            )
+
+    async def _worker_health_pid(self):
+        """Return the worker process id from /api/health (None if unreachable)."""
+        data = await self._get_json("/api/health")
+        if isinstance(data, dict) and isinstance(data.get("pid"), int):
+            return data["pid"]
+        return None
+
+    async def _worker_guard_loop(self):
+        """Re-attach the per-session key whenever the worker process changes.
+
+        The key lives only in the worker's in-memory session, so a restart would
+        otherwise silently kill generation for this in-flight session. Fail-soft:
+        any error is swallowed and the loop continues; it never disturbs the live
+        audio session. Mirrors `_caption_loop` / `_memory_feed_loop`.
+        """
+        try:
+            while True:
+                await asyncio.sleep(self.worker_guard_interval)
+                pid = await self._worker_health_pid()
+                if pid is None:
+                    continue  # worker down; the entrypoint supervisor revives it
+                if pid != self._worker_pid:
+                    # New worker process (restart / first reach after a down start)
+                    # — its memory has no key for this session. Re-init to recover.
+                    logger.info(
+                        f"claude-mem worker restart detected "
+                        f"(pid {self._worker_pid} -> {pid}); re-initializing session"
+                    )
+                    try:
+                        await self._init_session()
+                    except Exception as e:
+                        logger.debug(f"claude-mem session re-init failed: {e}")
+                        continue
+                    self._worker_pid = pid
+        except asyncio.CancelledError:
+            pass
 
     def note_latest_frame(self, jpeg_bytes):
         """Record the most-recent video frame (the exact bytes sent to Gemini).
@@ -240,6 +303,12 @@ class MemorySink:
             self._memory_feed_task.cancel()
             try:
                 await self._memory_feed_task
+            except (asyncio.CancelledError, Exception):
+                pass
+        if self._worker_guard_task:
+            self._worker_guard_task.cancel()
+            try:
+                await self._worker_guard_task
             except (asyncio.CancelledError, Exception):
                 pass
         await self._flush_turn()
@@ -535,7 +604,13 @@ class MemorySink:
                 continue
         if not parsed_ids:
             return "No valid observation IDs were provided."
-        items = await self._post_json("/api/observations/batch", {"ids": parsed_ids})
+        # Per-visitor isolation: scope the batch read to THIS key's namespace so a
+        # prompted/hallucinated id can only ever resolve to the caller's own
+        # observations. The worker filters on `project` when supplied; without it
+        # the model could read any visitor's observation by id (cross-tenant leak).
+        items = await self._post_json(
+            "/api/observations/batch", {"ids": parsed_ids, "project": self.project}
+        )
         if not isinstance(items, list) or not items:
             return "Could not find those observations."
         return self._format_observations(items)

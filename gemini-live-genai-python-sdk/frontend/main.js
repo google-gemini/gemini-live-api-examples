@@ -89,7 +89,6 @@ const geminiClient = new GeminiClient({
     // Send hidden instruction
     geminiClient.sendText(
       `System: Introduce yourself as a demo of the Gemini Live API.
-       Suggest playing with features like the native audio for accents and multilingual support.
        Keep the intro concise and friendly.`
     );
   },

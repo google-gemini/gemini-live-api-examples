@@ -132,10 +132,10 @@ transcript and tool calls**, not raw video frames. So when you show Gemini
 something and it answers, Gemini's transcribed description is captured as a
 `gemini` turn and flows into claude-mem like any other turn.
 
-To test that path, enable the sink and converse over video:
+To test that path, run the app (the memory sink is always on) and converse over video:
 
 ```bash
-CLAUDE_MEM_ENABLED=true CLAUDE_MEM_PROJECT=gemini-live-mem uv run main.py
+CLAUDE_MEM_PROJECT=gemini-live-mem uv run main.py
 ```
 
 After a turn completes, the model's spoken description of the video appears as a

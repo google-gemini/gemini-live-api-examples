@@ -7,7 +7,7 @@ logger = logging.getLogger(__name__)
 from google import genai
 from google.genai import types
 
-from claude_mem_sink import make_memory_sink_if_enabled
+from claude_mem_sink import make_memory_sink
 from prompts import PROMPTS
 
 class GeminiLive:
@@ -36,8 +36,9 @@ class GeminiLive:
         # Bring the memory sink up before connecting so we can (a) inject the
         # standard claude-mem session-start context into the system prompt and
         # (b) register the memory-recall tools. Created once here and reused for
-        # the whole session.
-        memory_sink = make_memory_sink_if_enabled(api_key=self.api_key)
+        # the whole session. Always created — claude-mem is core, not optional;
+        # the sink is fail-soft internally if the worker is unreachable.
+        memory_sink = make_memory_sink(api_key=self.api_key)
 
         live = PROMPTS["live_assistant"]
         system_instruction_text = live["system_instruction_base"]

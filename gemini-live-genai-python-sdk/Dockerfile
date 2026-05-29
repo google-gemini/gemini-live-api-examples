@@ -27,6 +27,12 @@ ENV PATH="/opt/venv/bin:${PATH}"
 # App source.
 COPY . .
 
+# Build the Next.js frontend into a static export (web/out). The base image is
+# Node 22, so the toolchain is already here — no extra stage needed. main.py
+# serves web/out as the whole site; web/node_modules and web/out are
+# .dockerignore'd so this build is always fresh from source.
+RUN cd web && npm ci && npm run build
+
 # Register the custom "gemini-live" observer mode with claude-mem.
 RUN cp claude-mem-docker/gemini-live.json \
     "$(npm root -g)/claude-mem/plugin/modes/gemini-live.json"
