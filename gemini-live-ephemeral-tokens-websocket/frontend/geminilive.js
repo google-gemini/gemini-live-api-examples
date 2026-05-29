@@ -405,6 +405,25 @@ class GeminiLiveAPI {
     this.sendMessage(message);
   }
 
+  sendClientContentMessage(text, turnComplete = true) {
+    const message = {
+      clientContent: {
+        turns: [
+          {
+            role: "user",
+            parts: [
+              {
+                text: text,
+              },
+            ],
+          },
+        ],
+        turnComplete: turnComplete,
+      },
+    };
+    this.sendMessage(message);
+  }
+
   sendToolResponse(functionResponses) {
     const message = {
       toolResponse: {

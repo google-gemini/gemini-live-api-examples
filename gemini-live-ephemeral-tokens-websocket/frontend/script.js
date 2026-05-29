@@ -48,6 +48,9 @@ function initDOM() {
     "chatContainer",
     "chatInput",
     "sendBtn",
+    "clientContentInput",
+    "injectBtn",
+    "turnComplete",
     "debugInfo",
     "setupJsonSection",
     "setupJsonDisplay",
@@ -456,7 +459,6 @@ async function toggleScreen() {
   }
 }
 
-// Send message
 function sendMessage() {
   const message = elements.chatInput.value.trim();
   if (!message) return;
@@ -465,6 +467,21 @@ function sendMessage() {
     addMessage(message, "user");
     state.client.sendTextMessage(message);
     elements.chatInput.value = "";
+  } else {
+    addMessage("[Connect to Gemini first]", "system");
+  }
+}
+
+// Inject client content into model history
+function injectClientContent() {
+  const message = elements.clientContentInput.value.trim();
+  if (!message) return;
+
+  if (state.client) {
+    addMessage("[Injected Client Content]: " + message, "user");
+    const turnComplete = elements.turnComplete.checked;
+    state.client.sendClientContentMessage(message, turnComplete);
+    elements.clientContentInput.value = "";
   } else {
     addMessage("[Connect to Gemini first]", "system");
   }
@@ -505,7 +522,6 @@ function updateTemperature() {
   updateStatus("temperatureValue", value);
 }
 
-// Event listeners
 function initEventListeners() {
   elements.connectBtn.addEventListener("click", connect);
   elements.disconnectBtn.addEventListener("click", disconnect);
@@ -513,11 +529,16 @@ function initEventListeners() {
   elements.startVideoBtn.addEventListener("click", toggleVideo);
   elements.startScreenBtn.addEventListener("click", toggleScreen);
   elements.sendBtn.addEventListener("click", sendMessage);
+  elements.injectBtn.addEventListener("click", injectClientContent);
   elements.volume.addEventListener("input", updateVolume);
   elements.temperature.addEventListener("input", updateTemperature);
 
   elements.chatInput.addEventListener("keypress", (e) => {
     if (e.key === "Enter") sendMessage();
+  });
+
+  elements.clientContentInput.addEventListener("keypress", (e) => {
+    if (e.key === "Enter") injectClientContent();
   });
 }
 

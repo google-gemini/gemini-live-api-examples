@@ -312,6 +312,17 @@ You are a helpful assistant. Be concise and friendly.</textarea>
           <input type="text" id="chatInput" placeholder="Type a message..." autocomplete="off" />
           <button id="sendBtn">Send</button>
         </div>
+        <div style="margin-top: 12px; padding-top: 12px; border-top: 1px dashed #ccc;">
+          <label for="clientContentInput" style="font-size: 13px; font-weight: bold; display: block; margin-bottom: 4px;">Inject Client Content:</label>
+          <div style="display: flex; gap: 8px; align-items: center;">
+            <input type="text" id="clientContentInput" placeholder="Type client content to inject..." autocomplete="off" style="flex: 1;" />
+            <button id="injectBtn">Inject</button>
+          </div>
+          <div style="margin-top: 6px; font-size: 13px;">
+            <input type="checkbox" id="turnComplete" checked />
+            <label for="turnComplete">Turn Complete (triggers response)</label>
+          </div>
+        </div>
       </section>
 
       <!-- Debug Info -->
