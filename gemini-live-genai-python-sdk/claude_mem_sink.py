@@ -59,21 +59,35 @@ EVENT_PLANNING_PATTERN = re.compile(
 )
 
 
-def make_memory_sink_if_enabled():
+def make_memory_sink_if_enabled(api_key=None):
     """Return a MemorySink when CLAUDE_MEM_ENABLED is truthy, else None.
 
     This is the only symbol gemini_live.py needs to import, keeping claude-mem
-    coupling to a single call site.
+    coupling to a single call site. `api_key` is the visitor's BYO Gemini key.
     """
     if os.getenv("CLAUDE_MEM_ENABLED", "false").lower() not in ("1", "true", "yes", "on"):
         return None
-    return MemorySink()
+    return MemorySink(api_key=api_key)
 
 
 class MemorySink:
-    def __init__(self):
+    def __init__(self, api_key=None):
         self.worker_url = os.getenv("CLAUDE_MEM_WORKER_URL", "http://127.0.0.1:37777").rstrip("/")
-        self.project = os.getenv("CLAUDE_MEM_PROJECT", "gemini-live-mem")
+        # BYO key: normalize the visitor's Gemini key ONCE so every downstream
+        # use (vision captioner, namespace, worker init POST) sees the identical
+        # value. .strip() so incidental whitespace can't fork a returning
+        # visitor into a fresh namespace.
+        self._user_gemini_api_key = (api_key or os.getenv("GEMINI_API_KEY") or "").strip()
+        # Per-visitor isolation: derive the claude-mem project namespace from a
+        # one-way hash of the key. sha256 is preimage-resistant (the namespace
+        # never reveals the key) yet deterministic (the SAME key always maps to
+        # the SAME namespace), so a returning visitor recovers their prior
+        # observations. 12 hex (48 bits) is collision-safe at demo scale.
+        self.project = (
+            f"gemini-live-{hashlib.sha256(self._user_gemini_api_key.encode('utf-8')).hexdigest()[:12]}"
+            if self._user_gemini_api_key
+            else os.getenv("CLAUDE_MEM_PROJECT", "gemini-live-mem")
+        )
         self.cwd = os.getcwd()
         self.content_session_id = f"gemini-live-{uuid.uuid4()}"
         self._client = httpx.AsyncClient(timeout=10.0)
@@ -85,7 +99,7 @@ class MemorySink:
         # Turns the live video into a steady stream of textual frame
         # descriptions even when the user is silent, so the observer keeps
         # building presence observations without any user intervention.
-        gemini_api_key = os.getenv("GEMINI_API_KEY")
+        gemini_api_key = self._user_gemini_api_key
         self.vision_enabled = (
             os.getenv("CLAUDE_MEM_VISION_ENABLED", "true").lower() in ("1", "true", "yes", "on")
             and bool(gemini_api_key)
@@ -157,6 +171,10 @@ class MemorySink:
                 "project": self.project,
                 "prompt": PROMPTS["session"]["init_prompt_label"],
                 "platformSource": PLATFORM_SOURCE,
+                # BYO key: the worker uses this per-session key to generate this
+                # visitor's observations. Held in-memory only by the worker —
+                # never written to disk.
+                "geminiApiKey": self._user_gemini_api_key,
             },
         )
         if self.vision_enabled:
@@ -225,6 +243,7 @@ class MemorySink:
             except (asyncio.CancelledError, Exception):
                 pass
         await self._flush_turn()
+        await self._complete_session()
         try:
             await self._client.aclose()
         except Exception as e:
@@ -607,6 +626,15 @@ class MemorySink:
                 "tool_input": tool_input,
                 "tool_response": tool_response,
                 "cwd": self.cwd,
+                "platformSource": PLATFORM_SOURCE,
+            },
+        )
+
+    async def _complete_session(self):
+        await self._post(
+            "/api/sessions/complete",
+            {
+                "contentSessionId": self.content_session_id,
                 "platformSource": PLATFORM_SOURCE,
             },
         )

@@ -3,16 +3,30 @@
 #   1. the claude-mem worker (localhost:37777) — the memory pipeline
 #   2. the FastAPI / Gemini Live app (0.0.0.0:$PORT) — what the phone connects to
 #
-# The observer runs on the `gemini` provider (same GEMINI_API_KEY as the app), so
-# no Claude OAuth/keychain is needed — the only practical option in the cloud.
+# BYO key: the public web demo runs entirely on each VISITOR's own Gemini key
+# (sent as the first WebSocket frame) — for both the live session and the memory
+# observations. No server key is used, so our quota can never be spent.
 set -euo pipefail
 
-: "${GEMINI_API_KEY:?GEMINI_API_KEY must be set}"
+# GEMINI_API_KEY is OPTIONAL now. It is only consumed by the Twilio phone path
+# (out of scope for the web demo); the web demo never uses it. Default it empty
+# so `set -u` doesn't trip when the Fly secret is unset.
+export GEMINI_API_KEY="${GEMINI_API_KEY:-}"
 
 # --- claude-mem worker configuration -----------------------------------------
 export CLAUDE_MEM_DATA_DIR="${CLAUDE_MEM_DATA_DIR:-/data/claude-mem}"
 export CLAUDE_MEM_PROVIDER="${CLAUDE_MEM_PROVIDER:-gemini}"
-export CLAUDE_MEM_GEMINI_API_KEY="$GEMINI_API_KEY"
+# BYO key: boot the worker with a clearly-fake PLACEHOLDER (not a real key) —
+# NOT empty. The worker's provider selector gates on isGeminiAvailable(), which
+# only checks this boot key (it doesn't see the per-session key). An EMPTY boot
+# key makes isGeminiAvailable() false, so the worker silently falls back to the
+# Claude SDK — which has no credentials in this image and would generate nothing.
+# A non-empty placeholder keeps the Gemini provider selected; the patched worker
+# then overrides it with each session's own key at generation time
+# (getGeminiConfig(session.geminiApiKey)). A session that arrives without a key
+# falls back to this placeholder, which Gemini rejects (400) — so it fails safe
+# and our real quota is never spent (verified locally 2026-05-28).
+export CLAUDE_MEM_GEMINI_API_KEY="byo-no-server-key-placeholder"
 export CLAUDE_MEM_GEMINI_MODEL="${CLAUDE_MEM_GEMINI_MODEL:-gemini-2.5-flash}"
 export CLAUDE_MEM_MODE="${CLAUDE_MEM_MODE:-gemini-live}"
 # Chroma (semantic search) is intentionally off: the live sink only reads back

@@ -58,25 +58,62 @@ async def websocket_endpoint(websocket: WebSocket):
 
     logger.info("WebSocket connection accepted")
 
+    # BYO key: the visitor's Gemini API key arrives as the FIRST WebSocket frame
+    # ({"type":"setup","api_key":"..."}). It is mandatory — the public demo never
+    # uses a server key for the live session or the memory observations. We read
+    # it as a body frame (not a query param) so the key never lands in access logs.
+    try:
+        setup_message = await websocket.receive()
+    except (WebSocketDisconnect, RuntimeError):
+        return
+    setup_text = setup_message.get("text") if isinstance(setup_message, dict) else None
+    visitor_api_key = ""
+    if setup_text:
+        try:
+            setup_payload = json.loads(setup_text)
+            if isinstance(setup_payload, dict) and setup_payload.get("type") == "setup":
+                visitor_api_key = (setup_payload.get("api_key") or "").strip()
+        except json.JSONDecodeError:
+            pass
+    if not visitor_api_key:
+        await websocket.send_json({
+            "type": "error",
+            "error": "A Gemini API key is required. Paste your key to start a session.",
+        })
+        await websocket.close()
+        return
+
     audio_input_queue = asyncio.Queue()
     video_input_queue = asyncio.Queue()
     text_input_queue = asyncio.Queue()
+    client_disconnected = asyncio.Event()
 
     async def audio_output_callback(data):
-        await websocket.send_bytes(data)
+        if client_disconnected.is_set():
+            raise asyncio.CancelledError()
+        try:
+            await websocket.send_bytes(data)
+        except (WebSocketDisconnect, RuntimeError) as e:
+            client_disconnected.set()
+            logger.info(f"WebSocket audio send stopped after client disconnect: {e}")
+            raise asyncio.CancelledError()
 
     async def audio_interrupt_callback():
         # The event queue handles the JSON message, but we might want to do something else here
         pass
 
     gemini_client = GeminiLive(
-        api_key=GEMINI_API_KEY, model=MODEL, input_sample_rate=16000
+        api_key=visitor_api_key, model=MODEL, input_sample_rate=16000
     )
 
     async def receive_from_client():
         try:
             while True:
                 message = await websocket.receive()
+
+                if message.get("type") == "websocket.disconnect":
+                    logger.info("WebSocket disconnected")
+                    return
 
                 if message.get("bytes"):
                     await audio_input_queue.put(message["bytes"])
@@ -95,10 +132,15 @@ async def websocket_endpoint(websocket: WebSocket):
                     await text_input_queue.put(text)
         except WebSocketDisconnect:
             logger.info("WebSocket disconnected")
+        except RuntimeError as e:
+            if "disconnect message" in str(e):
+                logger.info("WebSocket disconnected")
+            else:
+                logger.error(f"Error receiving from client: {e}")
         except Exception as e:
             logger.error(f"Error receiving from client: {e}")
-
-    receive_task = asyncio.create_task(receive_from_client())
+        finally:
+            client_disconnected.set()
 
     async def run_session():
         async for event in gemini_client.start_session(
@@ -109,20 +151,55 @@ async def websocket_endpoint(websocket: WebSocket):
             audio_interrupt_callback=audio_interrupt_callback,
         ):
             if event:
+                if client_disconnected.is_set():
+                    break
                 # Forward events (transcriptions, etc) to client
-                await websocket.send_json(event)
+                try:
+                    await websocket.send_json(event)
+                except (WebSocketDisconnect, RuntimeError) as e:
+                    client_disconnected.set()
+                    logger.info(f"WebSocket JSON send stopped after client disconnect: {e}")
+                    break
+
+    receive_task = asyncio.create_task(receive_from_client())
+    session_task = asyncio.create_task(run_session())
 
     try:
-        await run_session()
+        done, pending = await asyncio.wait(
+            {receive_task, session_task},
+            return_when=asyncio.FIRST_COMPLETED,
+        )
+        for task in done:
+            if task.cancelled():
+                continue
+            exc = task.exception()
+            if exc:
+                raise exc
     except Exception as e:
         import traceback
         logger.error(f"Error in Gemini session: {type(e).__name__}: {e}\n{traceback.format_exc()}")
+        # BYO key: surface the failure to the visitor instead of a silent dead
+        # session. The most common cause is a key that passes the REST API but
+        # lacks Gemini Live access (obs 87664). Best-effort — skip if the client
+        # already went away.
+        if not client_disconnected.is_set():
+            try:
+                await websocket.send_json({
+                    "type": "error",
+                    "error": "The live session failed to start. Your API key may not have Gemini Live access — try a different key.",
+                })
+            except Exception:
+                pass
     finally:
-        receive_task.cancel()
+        client_disconnected.set()
+        for task in (receive_task, session_task):
+            if not task.done():
+                task.cancel()
+        await asyncio.gather(receive_task, session_task, return_exceptions=True)
         # Ensure websocket is closed if not already
         try:
             await websocket.close()
-        except:
+        except Exception:
             pass
 
 

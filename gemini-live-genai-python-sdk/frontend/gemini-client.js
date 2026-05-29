@@ -10,7 +10,8 @@ class GeminiClient {
     this.onError = config.onError;
   }
 
-  connect() {
+  connect(apiKey) {
+    this.apiKey = apiKey;
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
     const wsUrl = `${protocol}//${window.location.host}/ws`;
 
@@ -18,6 +19,13 @@ class GeminiClient {
     this.websocket.binaryType = "arraybuffer";
 
     this.websocket.onopen = () => {
+      // BYO key: the visitor's key MUST be the very first frame. The backend
+      // reads it before building the Gemini client and the memory sink, and
+      // rejects the connection if it's missing. WS preserves order, so this
+      // lands before the intro text the onOpen callback sends next.
+      this.websocket.send(
+        JSON.stringify({ type: "setup", api_key: this.apiKey })
+      );
       if (this.onOpen) this.onOpen();
     };
 

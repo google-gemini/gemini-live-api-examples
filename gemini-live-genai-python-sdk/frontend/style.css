@@ -343,7 +343,8 @@ video {
   to { transform: scale(1); opacity: 1; }
 }
 
-input[type="text"] {
+input[type="text"],
+input[type="password"] {
   flex: 1;
   padding: 0.75rem;
   border: 1px solid #ddd;
@@ -352,6 +353,23 @@ input[type="text"] {
 .note {
   font-size: 0.8rem;
   color: #666;
+}
+
+/* BYO key input in the auth panel — full width within the column layout. */
+.api-key-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  width: 100%;
+  text-align: left;
+}
+.api-key-field label {
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+.api-key-field input[type="password"] {
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .session-end-section {

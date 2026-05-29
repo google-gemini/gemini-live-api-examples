@@ -37,7 +37,7 @@ class GeminiLive:
         # standard claude-mem session-start context into the system prompt and
         # (b) register the memory-recall tools. Created once here and reused for
         # the whole session.
-        memory_sink = make_memory_sink_if_enabled()
+        memory_sink = make_memory_sink_if_enabled(api_key=self.api_key)
 
         live = PROMPTS["live_assistant"]
         system_instruction_text = live["system_instruction_base"]

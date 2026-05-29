@@ -14,6 +14,7 @@ const sendBtn = document.getElementById("sendBtn");
 const videoPreview = document.getElementById("video-preview");
 const videoPlaceholder = document.getElementById("video-placeholder");
 const connectBtn = document.getElementById("connectBtn");
+const apiKeyInput = document.getElementById("apiKeyInput");
 const chatLog = document.getElementById("chat-log");
 const modelFeed = document.getElementById("model-feed");
 const modelFrame = document.getElementById("model-frame");
@@ -25,6 +26,24 @@ let currentGeminiMessageDiv = null;
 let currentUserMessageDiv = null;
 let modelFrameCount = 0;
 let memoryCount = 0;
+// BYO key: set when the backend rejects the connection (missing/invalid key) so
+// onClose returns to the auth panel with the error instead of "Session Ended".
+let sessionError = null;
+
+// --- BYO Gemini key (mandatory) ----------------------------------------------
+// The visitor's key gates Connect, persists in localStorage (paste-once), and is
+// sent as the first WebSocket frame. It never leaves the browser except to start
+// the session, and is never written to our server's disk.
+const STORED_KEY_NAME = "geminiApiKey";
+function syncConnectEnabled() {
+  connectBtn.disabled = !apiKeyInput.value.trim();
+}
+apiKeyInput.value = localStorage.getItem(STORED_KEY_NAME) || "";
+syncConnectEnabled();
+apiKeyInput.oninput = () => {
+  localStorage.setItem(STORED_KEY_NAME, apiKeyInput.value.trim());
+  syncConnectEnabled();
+};
 
 // Observation type -> emoji, matching the worker's gemini-live.json mode.
 const OBS_EMOJI = {
@@ -88,6 +107,17 @@ const geminiClient = new GeminiClient({
   },
   onClose: (e) => {
     console.log("WS Closed:", e);
+    if (sessionError) {
+      // BYO key: a rejected/invalid key — return to the auth panel with the
+      // error still visible (set in handleJsonMessage) instead of the generic
+      // "Session Ended" screen, so the visitor can fix their key and retry.
+      authSection.classList.remove("hidden");
+      appSection.classList.add("hidden");
+      sessionEndSection.classList.add("hidden");
+      syncConnectEnabled();
+      sessionError = null;
+      return;
+    }
     statusDiv.textContent = "Disconnected";
     statusDiv.className = "status disconnected";
     showSessionEnd();
@@ -125,6 +155,13 @@ function handleJsonMessage(msg) {
     appendInvitation(msg);
   } else if (msg.type === "observation") {
     appendObservation(msg.observation);
+  } else if (msg.type === "error") {
+    // BYO key: surface a missing/invalid key (e.g. a key without Gemini Live
+    // access) in the status area instead of failing into a silent dead session.
+    // onClose reads sessionError to restore the auth panel.
+    sessionError = msg.error || "Connection error.";
+    statusDiv.textContent = sessionError;
+    statusDiv.className = "status error";
   }
 }
 
@@ -206,19 +243,28 @@ function appendMessage(type, text) {
 
 // Connect Button Handler
 connectBtn.onclick = async () => {
+  const apiKey = apiKeyInput.value.trim();
+  if (!apiKey) {
+    statusDiv.textContent = "Enter your Gemini API key to connect.";
+    statusDiv.className = "status error";
+    return;
+  }
+
   statusDiv.textContent = "Connecting...";
+  statusDiv.className = "status disconnected";
+  sessionError = null;
   connectBtn.disabled = true;
 
   try {
     // Initialize audio context on user gesture
     await mediaHandler.initializeAudio();
 
-    geminiClient.connect();
+    geminiClient.connect(apiKey);
   } catch (error) {
     console.error("Connection error:", error);
     statusDiv.textContent = "Connection Failed: " + error.message;
     statusDiv.className = "status error";
-    connectBtn.disabled = false;
+    syncConnectEnabled();
   }
 };
 
@@ -336,7 +382,7 @@ function resetUI() {
     '<div class="memory-empty">Watching… memories appear here as the session unfolds.</div>';
   memoryCount = 0;
   memoryFeedCount.textContent = "";
-  connectBtn.disabled = false;
+  syncConnectEnabled();
 }
 
 function showSessionEnd() {

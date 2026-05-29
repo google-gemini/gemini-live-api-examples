@@ -31,6 +31,12 @@ COPY . .
 RUN cp claude-mem-docker/gemini-live.json \
     "$(npm root -g)/claude-mem/plugin/modes/gemini-live.json"
 
+# Overwrite the published worker with our BYO-key patched build (vendored from a
+# clean claude-mem v13.3.0 checkout + the per-session geminiApiKey override).
+# A plain COPY can't expand $(npm root -g), so mirror the cp pattern above.
+RUN cp claude-mem-docker/worker-service.cjs \
+    "$(npm root -g)/claude-mem/plugin/scripts/worker-service.cjs"
+
 ENV PORT=8080
 EXPOSE 8080
 

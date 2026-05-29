@@ -1,0 +1,113 @@
+diff --git a/src/services/worker-types.ts b/src/services/worker-types.ts
+index f34dcaa..878ac90 100644
+--- a/src/services/worker-types.ts
++++ b/src/services/worker-types.ts
+@@ -10,8 +10,10 @@ export interface ConversationMessage {
+ export interface ActiveSession {
+   sessionDbId: number;
+   contentSessionId: string;      
+-  memorySessionId: string | null; 
++  memorySessionId: string | null;
+   project: string;
++  /** BYO key: per-session Gemini API key. In-memory only — never persisted. */
++  geminiApiKey?: string;
+   platformSource: string;
+   userPrompt: string;
+   pendingMessages: PendingMessage[];  
+diff --git a/src/services/worker/GeminiProvider.ts b/src/services/worker/GeminiProvider.ts
+index bb67610..cb03a63 100644
+--- a/src/services/worker/GeminiProvider.ts
++++ b/src/services/worker/GeminiProvider.ts
+@@ -188,7 +188,7 @@ export class GeminiProvider {
+   }
+ 
+   async startSession(session: ActiveSession, worker?: WorkerRef): Promise<void> {
+-    const { apiKey, model, rateLimitingEnabled } = this.getGeminiConfig();
++    const { apiKey, model, rateLimitingEnabled } = this.getGeminiConfig(session.geminiApiKey);
+ 
+     if (!apiKey) {
+       throw new Error('Gemini API key not configured. Set CLAUDE_MEM_GEMINI_API_KEY in settings or GEMINI_API_KEY environment variable.');
+@@ -500,11 +500,13 @@ export class GeminiProvider {
+     return { content, tokensUsed };
+   }
+ 
+-  private getGeminiConfig(): { apiKey: string; model: GeminiModel; rateLimitingEnabled: boolean } {
++  private getGeminiConfig(apiKeyOverride?: string): { apiKey: string; model: GeminiModel; rateLimitingEnabled: boolean } {
+     const settingsPath = paths.settings();
+     const settings = SettingsDefaultsManager.loadFromFile(settingsPath);
+ 
+-    const apiKey = settings.CLAUDE_MEM_GEMINI_API_KEY || getCredential('GEMINI_API_KEY') || '';
++    // BYO key: a per-session override (the visitor's key) takes precedence over
++    // settings/env so each session's observations run on that visitor's quota.
++    const apiKey = apiKeyOverride || settings.CLAUDE_MEM_GEMINI_API_KEY || getCredential('GEMINI_API_KEY') || '';
+ 
+     const defaultModel: GeminiModel = 'gemini-2.5-flash';
+     const configuredModel = settings.CLAUDE_MEM_GEMINI_MODEL || defaultModel;
+diff --git a/src/services/worker/SessionManager.ts b/src/services/worker/SessionManager.ts
+index 84c3894..70af6f8 100644
+--- a/src/services/worker/SessionManager.ts
++++ b/src/services/worker/SessionManager.ts
+@@ -75,7 +75,7 @@ export class SessionManager {
+     this.onPendingMutate = cb;
+   }
+ 
+-  initializeSession(sessionDbId: number, currentUserPrompt?: string, promptNumber?: number): ActiveSession {
++  initializeSession(sessionDbId: number, currentUserPrompt?: string, promptNumber?: number, geminiApiKey?: string): ActiveSession {
+     logger.debug('SESSION', 'initializeSession called', {
+       sessionDbId,
+       promptNumber,
+@@ -102,6 +102,12 @@ export class SessionManager {
+       if (dbSession.platform_source && dbSession.platform_source !== session.platformSource) {
+         session.platformSource = dbSession.platform_source;
+       }
++      // BYO key: refresh the per-session key on re-init when one is supplied;
++      // never clobber an existing key with undefined (e.g. an observation POST
++      // that re-initializes a cached session carries no key).
++      if (geminiApiKey) {
++        session.geminiApiKey = geminiApiKey;
++      }
+ 
+       if (currentUserPrompt) {
+         logger.debug('SESSION', 'Updating userPrompt for continuation', {
+@@ -159,6 +165,7 @@ export class SessionManager {
+       contentSessionId: dbSession.content_session_id,
+       memorySessionId: null,  // Always start fresh - SDK will capture new ID
+       project: dbSession.project,
++      geminiApiKey,  // BYO key: in-memory only; undefined for non-BYO callers
+       platformSource: dbSession.platform_source,
+       userPrompt,
+       pendingMessages: [],
+diff --git a/src/services/worker/http/routes/SessionRoutes.ts b/src/services/worker/http/routes/SessionRoutes.ts
+index befc8fd..5595f87 100644
+--- a/src/services/worker/http/routes/SessionRoutes.ts
++++ b/src/services/worker/http/routes/SessionRoutes.ts
+@@ -201,6 +201,9 @@ export class SessionRoutes extends BaseRouteHandler {
+     prompt: z.string().optional(),
+     platformSource: z.string().optional(),
+     customTitle: z.string().optional(),
++    // BYO key: per-session Gemini API key used only to generate this session's
++    // observations. Held in-memory by the worker; never persisted to SQLite.
++    geminiApiKey: z.string().optional(),
+   }).passthrough();
+ 
+   private static readonly observationsByClaudeIdSchema = z.object({
+@@ -335,6 +338,10 @@ export class SessionRoutes extends BaseRouteHandler {
+     const rawPrompt = typeof req.body.prompt === 'string' ? req.body.prompt : undefined;
+     const platformSource = normalizePlatformSource(req.body.platformSource);
+     const customTitle = req.body.customTitle || undefined;
++    // BYO key: per-session Gemini key (in-memory only). May be undefined for
++    // non-BYO callers (Claude Code hooks), in which case generation falls back
++    // to settings/env as before.
++    const geminiApiKey = typeof req.body.geminiApiKey === 'string' ? req.body.geminiApiKey : undefined;
+ 
+     if (rawPrompt && isInternalProtocolPayload(rawPrompt)) {
+       logger.debug('HTTP', 'session-init: skipping internal protocol payload before session creation', { contentSessionId });
+@@ -417,7 +424,7 @@ export class SessionRoutes extends BaseRouteHandler {
+ 
+     if (platformSource !== 'cursor') {
+       const sdkPrompt = cleanedPrompt.startsWith('/') ? cleanedPrompt.substring(1) : cleanedPrompt;
+-      const session = this.sessionManager.initializeSession(sessionDbId, sdkPrompt, promptNumber);
++      const session = this.sessionManager.initializeSession(sessionDbId, sdkPrompt, promptNumber, geminiApiKey);
+ 
+       const latestPrompt = store.getLatestUserPrompt(session.contentSessionId);
+ 
