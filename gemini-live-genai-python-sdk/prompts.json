@@ -56,6 +56,7 @@
   },
 
   "session": {
-    "init_prompt_label": "Gemini Live session"
+    "init_prompt_label": "Live voice/video presence session",
+    "summary_recap_fallback": "A live voice/video presence session. Summarize who was present, how they looked and behaved, the setting around them, and anything they revealed about themselves, based on the session's observations."
   }
 }

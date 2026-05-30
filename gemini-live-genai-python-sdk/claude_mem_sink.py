@@ -175,6 +175,26 @@ class MemorySink:
         # live as the worker extracts new memories.
         self._obs_high_water = 0
 
+        # --- Session summaries ------------------------------------------------
+        # claude-mem only produces a session *summary* (the rich Request /
+        # Learned / Completed / Next-Steps block that the SessionStart context
+        # and the recall timeline are built from) when its Stop-hook-equivalent
+        # endpoint POST /api/sessions/summarize is called. Nothing in this app
+        # was calling it, so every session stayed summary-less: recall showed a
+        # bare "Live session" prompt with no narrative, and cross-session memory
+        # never gelled. We now summarize on session end AND on a periodic
+        # checkpoint (so memory survives an unclean disconnect that skips
+        # on_session_end). Re-summarizing a session is the normal claude-mem
+        # path — its Stop hook fires after every assistant turn — and the worker
+        # keeps the latest summary per session, so checkpoints simply refresh it.
+        self.summary_checkpoint_interval = float(
+            os.getenv("CLAUDE_MEM_SUMMARY_INTERVAL", "120")
+        )  # seconds between mid-session checkpoint summaries
+        self._summary_task = None
+        # Observations recorded since the last summary; a checkpoint only fires
+        # when there is something new, so an idle session spends no extra quota.
+        self._obs_since_summary = 0
+
     async def on_session_start(self):
         """Create the claude-mem session row and start the background loops."""
         await self._init_session()
@@ -193,6 +213,12 @@ class MemorySink:
             logger.info(
                 f"claude-mem live memory feed started "
                 f"(every {self.memory_feed_interval}s)"
+            )
+        if self.summary_checkpoint_interval > 0:
+            self._summary_task = asyncio.create_task(self._summary_checkpoint_loop())
+            logger.info(
+                f"claude-mem summary checkpoints started "
+                f"(every {self.summary_checkpoint_interval}s)"
             )
 
     async def _init_session(self):
@@ -311,8 +337,16 @@ class MemorySink:
                 await self._worker_guard_task
             except (asyncio.CancelledError, Exception):
                 pass
+        if self._summary_task:
+            self._summary_task.cancel()
+            try:
+                await self._summary_task
+            except (asyncio.CancelledError, Exception):
+                pass
         await self._flush_turn()
-        await self._complete_session()
+        # Generate the final session summary so this session is recallable as a
+        # narrative (not a bare prompt) in future sessions. Fail-soft.
+        await self._summarize_session()
         try:
             await self._client.aclose()
         except Exception as e:
@@ -432,6 +466,60 @@ class MemorySink:
         if isinstance(items, list) and items and isinstance(items[0].get("id"), int):
             return items[0]["id"]
         return 0
+
+    # --- Session summaries ----------------------------------------------------
+    async def _summary_checkpoint_loop(self):
+        """Periodically (re)generate this session's summary while it is live.
+
+        Keeps cross-session memory durable: if the browser/tab closes uncleanly
+        and on_session_end never runs, the last checkpoint summary is still
+        there. Only fires when new observations have accrued since the last
+        summary, so a quiet session spends no extra quota. Fail-soft, mirroring
+        `_caption_loop` / `_memory_feed_loop`.
+        """
+        try:
+            while True:
+                await asyncio.sleep(self.summary_checkpoint_interval)
+                if self._obs_since_summary <= 0:
+                    continue  # nothing new worth re-summarizing
+                self._obs_since_summary = 0
+                try:
+                    await self._summarize_session()
+                except Exception as e:
+                    logger.debug(f"claude-mem checkpoint summary failed: {e}")
+        except asyncio.CancelledError:
+            pass
+
+    async def _summarize_session(self):
+        """Trigger claude-mem summary generation for this session.
+
+        POSTs /api/sessions/summarize — the same path claude-mem's Stop hook
+        uses — which queues the LLM summary generator. The generator summarizes
+        from this session's already-stored observations; we pass a recap of the
+        recent transcript as the "last assistant message" so it has live
+        conversational context to anchor the summary on. Resets the
+        new-observation counter so the next checkpoint only fires on fresh
+        activity. Fail-soft: a missing/unreachable worker degrades to "no
+        summary" and never disturbs the live session.
+        """
+        self._obs_since_summary = 0
+        await self._post(
+            "/api/sessions/summarize",
+            {
+                "contentSessionId": self.content_session_id,
+                "last_assistant_message": self._summary_recap(),
+                "platformSource": PLATFORM_SOURCE,
+            },
+        )
+
+    def _summary_recap(self):
+        """A short recap of the recent transcript to anchor the summary on.
+
+        Falls back to a fixed line for vision-only / silent sessions so the
+        generator still summarizes the visual observations.
+        """
+        recap = "\n".join(self._recent_turns[-8:]).strip()
+        return recap or PROMPTS["session"]["summary_recap_fallback"]
 
     async def _flush_turn(self):
         user_text = "".join(self._user_text).strip()
@@ -693,6 +781,9 @@ class MemorySink:
         return "\n".join(lines) if lines else "No matching observations found."
 
     async def _post_observation(self, tool_name, tool_input, tool_response):
+        # Count every recorded observation as session activity so the summary
+        # checkpoint loop knows there is something new worth re-summarizing.
+        self._obs_since_summary += 1
         await self._post(
             "/api/sessions/observations",
             {
@@ -701,15 +792,6 @@ class MemorySink:
                 "tool_input": tool_input,
                 "tool_response": tool_response,
                 "cwd": self.cwd,
-                "platformSource": PLATFORM_SOURCE,
-            },
-        )
-
-    async def _complete_session(self):
-        await self._post(
-            "/api/sessions/complete",
-            {
-                "contentSessionId": self.content_session_id,
                 "platformSource": PLATFORM_SOURCE,
             },
         )

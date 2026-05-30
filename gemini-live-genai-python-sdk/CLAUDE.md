@@ -35,6 +35,7 @@ Extras hanging off the sink's `emit()` channel (all opt-in, fail-soft): live mem
 - **Per-key namespace partition.** Project namespace = `gemini-live-<sha256(key)[:12]>`. A keyed session only sees memory created with that exact key; pre-BYOK observations under the flat `gemini-live-mem` project are unreachable. Want one shared pool? Pin the project string and use the key only for generation.
 - **Worker boot key is a placeholder, not empty.** Empty makes `isGeminiAvailable()` false → silent fallback to the Claude SDK (no creds here) → nothing generated. BYOK is a patched worker (`claude-mem-docker/worker-byo-key.patch`, prebuilt as `worker-service.cjs`), not stock claude-mem.
 - **Can't scale horizontally.** One Fly machine: the memory volume attaches to one machine and the worker + app share localhost. `docker-entrypoint.sh` boots the worker first, waits for health, then the app.
+- **Summaries come ONLY from `POST /api/sessions/summarize`.** That is the worker's Stop-hook-equivalent; it's what fills the per-session Request / Learned / Completed / Next-Steps that `/api/context/recent` (the SessionStart context injected into the live model) and the recall timeline render. There is **no** `/api/sessions/complete` route — posting there 404s silently (fail-soft), which is exactly the bug that left every session summary-less and labeled with the bare init prompt. The sink calls `summarize` on session end and on a periodic checkpoint (`_summarize_session`); re-summarizing a session is normal (the worker keeps the latest). `memory_session_id` is NULL until the generator runs, so a session only appears in recall once at least one observation has been generated.
 
 ## Env vars (set in `docker-entrypoint.sh` / `fly.toml`)
 
@@ -48,6 +49,7 @@ Extras hanging off the sink's `emit()` channel (all opt-in, fail-soft): live mem
 | `CLAUDE_MEM_VISION_ENABLED` / `_MODEL` | autonomous frame captioner |
 | `CLAUDE_MEM_INVITATION_ENABLED` / `_MODEL` | event-invitation images |
 | `CLAUDE_MEM_MEMORY_FEED_ENABLED` | live memory feed to the UI |
+| `CLAUDE_MEM_SUMMARY_INTERVAL` | seconds between mid-session checkpoint summaries (default 120; ≤0 disables checkpoints, end-of-session summary still fires) |
 | `TOKENROUTER_API_KEY` / `_BASE_URL` | optional gateway for image quota |
 | `GEMINI_API_KEY` | optional; only the Twilio phone path uses it, never the web demo |
 
