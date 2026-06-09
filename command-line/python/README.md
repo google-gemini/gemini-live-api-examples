@@ -31,17 +31,17 @@ python main.py
 
 You should see **"Connected to Gemini. Start speaking!"** — talk into your mic and Gemini will respond with audio. Press `Ctrl+C` to quit.
 
-## YouTube Real-time Translation
+## Real-time Audio Stream Translation
 
-A CLI script to translate any YouTube video's audio in real-time.
+A CLI script to translate any remote audio stream URL in real-time.
 
 ### Run Translation Script
 
 ```bash
-python translate.py --url "https://www.youtube.com/watch?v=YOUR_VIDEO_ID" --target es
+python translate.py --target es
 ```
 
-- `--url`: The YouTube video URL you want to translate.
+- `--url`: The audio stream URL you want to translate (defaults to a sample WAV audio file: `https://storage.googleapis.com/generativeai-downloads/gemini-cookbook/audio/gemini-live-translate-sample.wav`).
 - `--target`: The target translation language code (e.g., `es` for Spanish, `fr` for French, `pl` for Polish). Defaults to `es`.
 - `--original-volume`: Volume level for playing the original speaker's audio in the background (float from `0.0` to `1.0`, defaults to `0.08` or 8% volume). Set to `0.0` to disable background playback.
 
