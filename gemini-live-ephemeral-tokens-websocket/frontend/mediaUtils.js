@@ -12,6 +12,7 @@ class AudioStreamer {
     this.audioContext = null;
     this.audioWorklet = null;
     this.mediaStream = null;
+    this.audioSource = null;
     this.isStreaming = false;
     this.sampleRate = 16000; // Gemini requires 16kHz
   }
@@ -40,44 +41,51 @@ class AudioStreamer {
         audio: audioConstraints,
       });
 
-      // Create audio context at 16kHz
-      this.audioContext = new (window.AudioContext ||
-        window.webkitAudioContext)({
-        sampleRate: this.sampleRate,
-      });
+      // Create audio context at 16kHz if it doesn't exist
+      if (!this.audioContext) {
+        this.audioContext = new (window.AudioContext ||
+          window.webkitAudioContext)({
+          sampleRate: this.sampleRate,
+        });
 
-      // Load the audio worklet module
-      await this.audioContext.audioWorklet.addModule(
-        "audio-processors/capture.worklet.js"
-      );
+        // Load the audio worklet module
+        await this.audioContext.audioWorklet.addModule(
+          "audio-processors/capture.worklet.js"
+        );
 
-      // Create the audio worklet node
-      this.audioWorklet = new AudioWorkletNode(
-        this.audioContext,
-        "audio-capture-processor"
-      );
+        // Create the audio worklet node
+        this.audioWorklet = new AudioWorkletNode(
+          this.audioContext,
+          "audio-capture-processor"
+        );
 
-      // Set up message handling from the worklet
-      this.audioWorklet.port.onmessage = (event) => {
-        if (!this.isStreaming) return;
+        // Set up message handling from the worklet
+        this.audioWorklet.port.onmessage = (event) => {
+          if (!this.isStreaming) return;
 
-        if (event.data.type === "audio") {
-          const inputData = event.data.data;
-          const pcmData = this.convertToPCM16(inputData);
-          const base64Audio = this.arrayBufferToBase64(pcmData);
+          if (event.data.type === "audio") {
+            const inputData = event.data.data;
+            const pcmData = this.convertToPCM16(inputData);
+            const base64Audio = this.arrayBufferToBase64(pcmData);
 
-          // Send to Gemini
-          if (this.client && this.client.connected) {
-            this.client.sendAudioMessage(base64Audio);
+            // Send to Gemini
+            if (this.client && this.client.connected) {
+              this.client.sendAudioMessage(base64Audio);
+            }
           }
-        }
-      };
+        };
+      }
+
+      // Ensure the context is running (it might be suspended by the browser or by us in stop())
+      if (this.audioContext.state === "suspended") {
+        await this.audioContext.resume();
+      }
 
       // Connect the audio graph
-      const source = this.audioContext.createMediaStreamSource(
+      this.audioSource = this.audioContext.createMediaStreamSource(
         this.mediaStream
       );
-      source.connect(this.audioWorklet);
+      this.audioSource.connect(this.audioWorklet);
 
       this.isStreaming = true;
       console.log("🎤 Audio streaming started");
@@ -94,15 +102,13 @@ class AudioStreamer {
   stop() {
     this.isStreaming = false;
 
-    if (this.audioWorklet) {
-      this.audioWorklet.disconnect();
-      this.audioWorklet.port.close();
-      this.audioWorklet = null;
+    if (this.audioSource) {
+      this.audioSource.disconnect();
+      this.audioSource = null;
     }
 
-    if (this.audioContext) {
-      this.audioContext.close();
-      this.audioContext = null;
+    if (this.audioContext && this.audioContext.state === "running") {
+      this.audioContext.suspend();
     }
 
     if (this.mediaStream) {
@@ -420,6 +426,11 @@ class AudioPlayer {
         window.webkitAudioContext)({
         sampleRate: this.sampleRate,
       });
+
+      // Resume immediately since we are in a user-initiated gesture
+      if (this.audioContext.state === "suspended") {
+        await this.audioContext.resume();
+      }
 
       // Load the audio worklet from external file
       await this.audioContext.audioWorklet.addModule(
