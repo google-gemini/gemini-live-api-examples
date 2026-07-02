@@ -22,6 +22,9 @@ class AudioStreamer {
    * @param {string} deviceId - Optional device ID for specific microphone
    */
   async start(deviceId = null) {
+    if (this.isStreaming) {
+      return;
+    }
     try {
       // Build audio constraints
       const audioConstraints = {
@@ -117,6 +120,17 @@ class AudioStreamer {
     }
 
     console.log("🛑 Audio streaming stopped");
+  }
+
+  /**
+   * Clean up resources
+   */
+  destroy() {
+    this.stop();
+    if (this.audioContext) {
+      this.audioContext.close();
+      this.audioContext = null;
+    }
   }
 
   /**
@@ -410,6 +424,7 @@ class AudioPlayer {
     this.workletNode = null;
     this.gainNode = null;
     this.isInitialized = false;
+    this.initPromise = null;
     this.volume = 1.0;
     this.sampleRate = 24000; // Gemini outputs at 24kHz
   }
@@ -419,44 +434,50 @@ class AudioPlayer {
    */
   async init() {
     if (this.isInitialized) return;
+    if (this.initPromise) return this.initPromise;
 
-    try {
-      // Create audio context at 24kHz to match Gemini
-      this.audioContext = new (window.AudioContext ||
-        window.webkitAudioContext)({
-        sampleRate: this.sampleRate,
-      });
+    this.initPromise = (async () => {
+      try {
+        // Create audio context at 24kHz to match Gemini
+        this.audioContext = new (window.AudioContext ||
+          window.webkitAudioContext)({
+          sampleRate: this.sampleRate,
+        });
 
-      // Resume immediately since we are in a user-initiated gesture
-      if (this.audioContext.state === "suspended") {
-        await this.audioContext.resume();
+        // Resume immediately since we are in a user-initiated gesture
+        if (this.audioContext.state === "suspended") {
+          await this.audioContext.resume();
+        }
+
+        // Load the audio worklet from external file
+        await this.audioContext.audioWorklet.addModule(
+          "audio-processors/playback.worklet.js"
+        );
+
+        // Create worklet node
+        this.workletNode = new AudioWorkletNode(
+          this.audioContext,
+          "pcm-processor"
+        );
+
+        // Create gain node for volume control
+        this.gainNode = this.audioContext.createGain();
+        this.gainNode.gain.value = this.volume;
+
+        // Connect nodes
+        this.workletNode.connect(this.gainNode);
+        this.gainNode.connect(this.audioContext.destination);
+
+        this.isInitialized = true;
+        console.log("🔊 Audio player initialized");
+      } catch (error) {
+        console.error("Failed to initialize audio player:", error);
+        this.initPromise = null;
+        throw error;
       }
+    })();
 
-      // Load the audio worklet from external file
-      await this.audioContext.audioWorklet.addModule(
-        "audio-processors/playback.worklet.js"
-      );
-
-      // Create worklet node
-      this.workletNode = new AudioWorkletNode(
-        this.audioContext,
-        "pcm-processor"
-      );
-
-      // Create gain node for volume control
-      this.gainNode = this.audioContext.createGain();
-      this.gainNode.gain.value = this.volume;
-
-      // Connect nodes
-      this.workletNode.connect(this.gainNode);
-      this.gainNode.connect(this.audioContext.destination);
-
-      this.isInitialized = true;
-      console.log("🔊 Audio player initialized");
-    } catch (error) {
-      console.error("Failed to initialize audio player:", error);
-      throw error;
-    }
+    return this.initPromise;
   }
 
   /**
@@ -524,5 +545,6 @@ class AudioPlayer {
       this.audioContext = null;
     }
     this.isInitialized = false;
+    this.initPromise = null;
   }
 }
