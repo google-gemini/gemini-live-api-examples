@@ -203,10 +203,19 @@ function disconnect() {
     state.client = null;
   }
 
-  // Stop all streams
-  if (state.audio.streamer) state.audio.streamer.stop();
+  // Clean up audio streamer
+  if (state.audio.streamer) {
+    state.audio.streamer.destroy();
+    state.audio.streamer = null;
+  }
   if (state.video.streamer) state.video.streamer.stop();
   if (state.screen.capture) state.screen.capture.stop();
+
+  // Clean up audio player
+  if (state.audio.player) {
+    state.audio.player.destroy();
+    state.audio.player = null;
+  }
 
   // Reset states
   state.audio.isStreaming = false;
