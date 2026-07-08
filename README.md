@@ -63,7 +63,7 @@ Live API:
 *   **[Command-line Python example](./command-line/python/README.md)**: A minimal command-line app that streams microphone audio to the Gemini Live API and plays back the response in real time using Python.
 *   **[Command-line Node.js example](./command-line/node/README.md)**: A minimal command-line app that streams microphone audio to the Gemini Live API and plays back the response in real time using Node.js.
 *   **[Command-line Translation Python example](./command-line/python/README.md#real-time-audio-stream-translation)**: A command-line tool that streams a remote audio URL into the Gemini Live Translate model, plays back the translated audio, and prints transcripts with language codes in real time.
-*   **[Broadcast Translation Web App (LiveKit)](../gemini-live-translate-livekit/README.md)**: A production-ready multilingual broadcast app built with Next.js, LiveKit, and the Gemini Live API that translates speaker audio to multiple target languages concurrently with low latency.
+*   **[Broadcast Translation Web App (LiveKit)](https://github.com/google-gemini/gemini-live-translate-livekit)**: A production-ready multilingual broadcast app built with Next.js, LiveKit, and the Gemini Live API that translates speaker audio to multiple target languages concurrently with low latency. *(Note: This project has moved to a standalone repository)*
 
 > [!TIP]
 > Install the [Gemini Live API Dev](https://github.com/google-gemini/gemini-skills?tab=readme-ov-file#gemini-live-api-dev) skill for AI-assisted development with the Live API in your coding agents.
