@@ -26,6 +26,9 @@ function initDOM() {
     "enableCssStyleTool",
     "enableGetOrderTool",
     "voiceSelect",
+    "thinkingLevelSelect",
+    "enableDrawSvgTool",
+    "enableProactiveVideo",
     "temperature",
     "temperatureValue",
     "disableActivityDetection",
@@ -140,6 +143,10 @@ async function connect() {
     state.client.googleGrounding = elements.enableGrounding.checked;
     state.client.responseModalities = ["AUDIO"];
     state.client.voiceName = elements.voiceSelect.value;
+    state.client.thinkingLevel = elements.thinkingLevelSelect.value;
+    state.client.proactivity = {
+      proactiveVideo: elements.enableProactiveVideo.checked
+    };
     state.client.temperature = parseFloat(elements.temperature.value);
 
     // Set automatic activity detection configuration
@@ -177,6 +184,13 @@ async function connect() {
         const getOrderTool = new GetOrderTool();
         state.client.addFunction(getOrderTool);
         console.log("✅ Get order tool enabled");
+      }
+
+      // Add draw SVG tool if enabled
+      if (elements.enableDrawSvgTool.checked) {
+        const drawSvgTool = new DrawSVGTool();
+        state.client.addFunction(drawSvgTool);
+        console.log("✅ Draw SVG tool enabled");
       }
     } else {
       console.log(
@@ -302,14 +316,14 @@ function handleMessage(message) {
             // NON_BLOCKING tools require a scheduling hint so the model knows
             // how to handle the async result: INTERRUPT | WHEN_IDLE | SILENT
             if (isNonBlocking) {
-              response.scheduling = "INTERRUPT";
+              response.scheduling = toolDef.scheduling || "INTERRUPT";
             }
             return { id: functionCallId, name: functionName, response };
           } catch (err) {
             console.error(`Error calling function ${functionName}:`, err);
             const response = { error: err.message };
             if (isNonBlocking) {
-              response.scheduling = "INTERRUPT";
+              response.scheduling = toolDef.scheduling || "INTERRUPT";
             }
             return { id: functionCallId, name: functionName, response };
           }

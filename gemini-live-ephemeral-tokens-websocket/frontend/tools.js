@@ -156,3 +156,51 @@ class GetOrderTool extends FunctionCallDefinition {
     return mockOrder;
   }
 }
+
+/**
+ * Draw SVG Tool
+ * Paints a full SVG drawing on the page.
+ * Non-blocking: model can keep speaking. Silent: does not interrupt.
+ */
+class DrawSVGTool extends FunctionCallDefinition {
+  constructor() {
+    super(
+      "draw_svg",
+      "Paints a full SVG drawing on the page. Use this tool when asked to draw, sketch, or generate custom SVG vector graphics.",
+      {
+        type: "object",
+        properties: {
+          svg: {
+            type: "string",
+            description: "The full SVG XML string to render (including <svg> ... </svg> tags)"
+          }
+        }
+      },
+      ["svg"],
+      "NON_BLOCKING"
+    );
+    this.scheduling = "SILENT";
+  }
+
+  functionToCall(parameters) {
+    const svgString = parameters.svg;
+    if (!svgString) {
+      console.warn("draw_svg tool: No SVG string provided");
+      return "failed: No SVG string provided";
+    }
+
+    const container = document.getElementById("svgContainer");
+    const section = document.getElementById("svgSection");
+
+    if (container && section) {
+      container.innerHTML = svgString;
+      section.style.display = "block";
+      console.log("🎨 SVG rendered successfully");
+      return "ok";
+    } else {
+      console.error("draw_svg tool: DOM elements not found");
+      return "failed: DOM container not found";
+    }
+  }
+}
+

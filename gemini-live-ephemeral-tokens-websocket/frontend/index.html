@@ -85,7 +85,7 @@
 
           <div>
             <label for="model">Model ID:</label><br />
-            <input type="text" id="model" value="gemini-beyond-live-rev25-v4xs-proactive-rc2"
+            <input type="text" id="model" value="gemini-3.1-flash-live-talker-only-rev25-rc3p3f"
               placeholder="Enter model ID" />
           </div>
         </details>
@@ -112,6 +112,16 @@ You are a helpful assistant. Be concise and friendly.</textarea>
           </div>
 
           <div>
+            <label for="thinkingLevelSelect">Thinking Level:</label><br />
+            <select id="thinkingLevelSelect">
+              <option value="minimal" selected>Minimal (Default)</option>
+              <option value="low">Low</option>
+              <option value="medium">Medium</option>
+              <option value="high">High</option>
+            </select>
+          </div>
+
+          <div>
             <label for="temperature">Temperature: <span id="temperatureValue">1.0</span></label><br />
             <input type="range" id="temperature" min="0.1" max="2.0" step="0.1" value="1.0" />
             <br />
@@ -124,6 +134,11 @@ You are a helpful assistant. Be concise and friendly.</textarea>
             <label for="enableGrounding">Enable Google grounding (Enabling Google grounding will disable
               custom tools)
             </label>
+          </div>
+
+          <div>
+            <input type="checkbox" id="enableProactiveVideo" />
+            <label for="enableProactiveVideo">Enable proactive video</label>
           </div>
         </details>
 
@@ -148,6 +163,12 @@ You are a helpful assistant. Be concise and friendly.</textarea>
             <input type="checkbox" id="enableGetOrderTool" checked />
             <label for="enableGetOrderTool">Get Order</label>
             <span> (Async mock: fetches a customer order from the backend, takes ~5s) </span>
+          </div>
+
+          <div>
+            <input type="checkbox" id="enableDrawSvgTool" checked />
+            <label for="enableDrawSvgTool">Draw SVG</label>
+            <span> (Render SVG vector drawings sent by the model) </span>
           </div>
         </details>
 
@@ -313,9 +334,12 @@ You are a helpful assistant. Be concise and friendly.</textarea>
           <button id="sendBtn">Send</button>
         </div>
         <div style="margin-top: 12px; padding-top: 12px; border-top: 1px dashed #ccc;">
-          <label for="clientContentInput" style="font-size: 13px; font-weight: bold; display: block; margin-bottom: 4px;">Inject Client Content:</label>
+          <label for="clientContentInput"
+            style="font-size: 13px; font-weight: bold; display: block; margin-bottom: 4px;">Inject Client
+            Content:</label>
           <div style="display: flex; gap: 8px; align-items: center;">
-            <input type="text" id="clientContentInput" placeholder="Type client content to inject..." autocomplete="off" style="flex: 1;" />
+            <input type="text" id="clientContentInput" placeholder="Type client content to inject..." autocomplete="off"
+              style="flex: 1;" />
             <button id="injectBtn">Inject</button>
           </div>
           <div style="margin-top: 6px; font-size: 13px;">
@@ -323,6 +347,12 @@ You are a helpful assistant. Be concise and friendly.</textarea>
             <label for="turnComplete">Turn Complete (triggers response)</label>
           </div>
         </div>
+      </section>
+
+      <!-- Rendered SVG -->
+      <section id="svgSection" style="display: none; margin-top: 20px;">
+        <h2>Rendered SVG</h2>
+        <div id="svgContainer" style="background: white; padding: 15px; border-radius: 8px; border: 1px solid #ccc; display: flex; justify-content: center; align-items: center; box-shadow: 0 4px 6px rgba(0,0,0,0.1); overflow: auto;"></div>
       </section>
 
       <!-- Debug Info -->

@@ -159,6 +159,8 @@ class GeminiLiveAPI {
     this.systemInstructions = "";
     this.googleGrounding = false;
     this.voiceName = "Puck"; // Default voice
+    this.thinkingLevel = "minimal"; // Default thinking level
+    this.proactivity = { proactiveVideo: false }; // Proactivity config
     this.temperature = 1.0; // Default temperature
     this.inputAudioTranscription = false;
     this.outputAudioTranscription = false;
@@ -352,9 +354,13 @@ class GeminiLiveAPI {
               },
             },
           },
+          thinkingConfig: {
+            thinkingLevel: this.thinkingLevel,
+          },
         },
         systemInstruction: { parts: [{ text: this.systemInstructions }] },
         tools: [{ functionDeclarations: tools }],
+        proactivity: this.proactivity,
 
 
         realtimeInputConfig: {
