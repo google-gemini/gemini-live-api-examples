@@ -28,7 +28,6 @@ function initDOM() {
     "voiceSelect",
     "thinkingLevelSelect",
     "enableDrawSvgTool",
-    "enableProactiveVideo",
     "temperature",
     "temperatureValue",
     "disableActivityDetection",
@@ -144,9 +143,6 @@ async function connect() {
     state.client.responseModalities = ["AUDIO"];
     state.client.voiceName = elements.voiceSelect.value;
     state.client.thinkingLevel = elements.thinkingLevelSelect.value;
-    state.client.proactivity = {
-      proactiveVideo: elements.enableProactiveVideo.checked
-    };
     state.client.temperature = parseFloat(elements.temperature.value);
 
     // Set automatic activity detection configuration

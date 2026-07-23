@@ -160,7 +160,6 @@ class GeminiLiveAPI {
     this.googleGrounding = false;
     this.voiceName = "Puck"; // Default voice
     this.thinkingLevel = "minimal"; // Default thinking level
-    this.proactivity = { proactiveVideo: false }; // Proactivity config
     this.temperature = 1.0; // Default temperature
     this.inputAudioTranscription = false;
     this.outputAudioTranscription = false;
@@ -181,8 +180,8 @@ class GeminiLiveAPI {
 
     this.activityHandling = "ACTIVITY_HANDLING_UNSPECIFIED";
 
-    this.serviceUrl = `wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1alpha.GenerativeService.BidiGenerateContentConstrained?access_token=${this.token}`;
-    console.log("Service URL (v1alpha): ", this.serviceUrl);
+    this.serviceUrl = `wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContentConstrained?access_token=${this.token}`;
+    console.log("Service URL (v1beta): ", this.serviceUrl);
 
     this.connected = false;
     this.webSocket = null;
@@ -360,7 +359,6 @@ class GeminiLiveAPI {
         },
         systemInstruction: { parts: [{ text: this.systemInstructions }] },
         tools: [{ functionDeclarations: tools }],
-        proactivity: this.proactivity,
 
 
         realtimeInputConfig: {
