@@ -1,6 +1,7 @@
 // --- Main Application Logic ---
 
 const statusDiv = document.getElementById("status");
+const interactionStatusDiv = document.getElementById("interaction-status");
 const authSection = document.getElementById("auth-section");
 const appSection = document.getElementById("app-section");
 const sessionEndSection = document.getElementById("session-end-section");
@@ -50,6 +51,9 @@ const geminiClient = new GeminiClient({
     console.log("WS Closed:", e);
     statusDiv.textContent = "Disconnected";
     statusDiv.className = "status disconnected";
+    if (interactionStatusDiv) {
+      interactionStatusDiv.className = "interaction-status hidden";
+    }
     showSessionEnd();
   },
   onError: (e) => {
@@ -60,7 +64,19 @@ const geminiClient = new GeminiClient({
 });
 
 function handleJsonMessage(msg) {
-  if (msg.type === "interrupted") {
+  if (msg.type === "interaction_status") {
+    if (interactionStatusDiv) {
+      if (msg.status === "IN_PROGRESS") {
+        interactionStatusDiv.textContent = "Processing...";
+        interactionStatusDiv.className = "interaction-status in-progress";
+      } else if (msg.status === "REQUIRES_ACTION") {
+        interactionStatusDiv.textContent = "Ready";
+        interactionStatusDiv.className = "interaction-status requires-action";
+        currentGeminiMessageDiv = null;
+        currentUserMessageDiv = null;
+      }
+    }
+  } else if (msg.type === "interrupted") {
     mediaHandler.stopAudioPlayback();
     currentGeminiMessageDiv = null;
     currentUserMessageDiv = null;

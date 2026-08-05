@@ -130,6 +130,33 @@ header {
   color: #d93025;
 }
 
+.interaction-status {
+  padding: 0.5rem 1rem;
+  border-radius: 20px;
+  font-size: 0.9rem;
+  font-weight: bold;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.interaction-status.in-progress {
+  background-color: #feefc3;
+  color: #b06000;
+  animation: pulse 1.5s infinite;
+}
+
+.interaction-status.requires-action {
+  background-color: #e8f0fe;
+  color: #1a73e8;
+}
+
+@keyframes pulse {
+  0% { opacity: 1; }
+  50% { opacity: 0.6; }
+  100% { opacity: 1; }
+}
+
 .auth-section {
   display: flex;
   flex-direction: column;

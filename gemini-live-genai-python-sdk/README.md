@@ -30,6 +30,7 @@ Open your browser and navigate to:
 - **FastAPI Backend**: Robust, async-ready web server handling WebSocket connections.
 - **Real-time Streaming**: Bi-directional audio and video streaming.
 - **Tool Use**: Demonstrates how to register and handle server-side tools.
+- **Async Reasoning & Interaction Status**: Manages `interaction_status` (`IN_PROGRESS`, `REQUIRES_ACTION`) for models with asynchronous reasoning (e.g., clever-chatter).
 - **Vanilla JS Frontend**: Lightweight frontend with no build steps or framework dependencies.
 
 ## Project Structure
@@ -86,3 +87,13 @@ async with self.client.aio.live.connect(model=self.model, config=config) as sess
 ### Frontend (`gemini-client.js`)
 
 The frontend communicates with the FastAPI backend via WebSockets, sending base64-encoded media chunks and receiving audio responses.
+
+## Interaction Status & State Management (EAP)
+
+When working with models that use background/asynchronous reasoning (such as `clever-chatter`), `turn_complete: true` is no longer a reliable indicator that the model has finished its turn.
+
+Instead, monitor `server_content.interaction_status`:
+
+- **`IN_PROGRESS`**: The server is actively processing user input or performing background reasoning. Further model output (audio frames, transcriptions, or tool calls) may follow.
+- **`REQUIRES_ACTION`**: The server has completed processing and reasoning. The session is idle and awaiting user input.
+
