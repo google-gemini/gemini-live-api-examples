@@ -361,6 +361,11 @@ function handleMessage(message) {
       addMessage("[Interrupted]", "system");
       if (state.audio.player) state.audio.player.interrupt();
       break;
+
+    case MultimodalLiveResponseType.INTERACTION_STATUS:
+      console.log("Interaction status:", message.data);
+      updateStatus("debugInfo", `Interaction status: ${message.data}`);
+      break;
   }
 }
 

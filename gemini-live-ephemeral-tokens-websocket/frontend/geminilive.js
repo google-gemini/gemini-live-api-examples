@@ -14,6 +14,7 @@ const MultimodalLiveResponseType = {
   ERROR: "ERROR",
   INPUT_TRANSCRIPTION: "INPUT_TRANSCRIPTION",
   OUTPUT_TRANSCRIPTION: "OUTPUT_TRANSCRIPTION",
+  INTERACTION_STATUS: "INTERACTION_STATUS",
 };
 
 /**
@@ -89,6 +90,17 @@ function parseResponseMessages(data) {
     if (serverContent?.turnComplete) {
       console.log("🏁 TURN COMPLETE response");
       responses.push({ type: MultimodalLiveResponseType.TURN_COMPLETE, data: "", endOfTurn: true });
+    }
+
+    // Interaction status
+    if (serverContent?.interactionStatus || serverContent?.interaction_status) {
+      const status = serverContent.interactionStatus || serverContent.interaction_status;
+      console.log("🔄 INTERACTION STATUS response", status);
+      responses.push({
+        type: MultimodalLiveResponseType.INTERACTION_STATUS,
+        data: status,
+        endOfTurn: false,
+      });
     }
   } catch (err) {
     console.log("⚠️ Error parsing response data: ", err, data);
