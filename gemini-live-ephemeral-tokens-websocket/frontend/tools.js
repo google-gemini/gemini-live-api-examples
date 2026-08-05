@@ -148,7 +148,7 @@ class GetOrderTool extends FunctionCallDefinition {
         { sku: "GADGET-7", name: "Mega Gadget", quantity: 1, unit_price_usd: 49.99 }
       ],
       total_usd: 89.97,
-      estimated_delivery: "2026-05-10",
+      estimated_delivery: "2026-08-11",
       tracking_number: "1Z999AA10123456784"
     };
 

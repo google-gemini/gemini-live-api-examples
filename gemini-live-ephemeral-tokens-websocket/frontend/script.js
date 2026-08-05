@@ -108,6 +108,16 @@ function createMessage(text, className = "") {
   return div;
 }
 
+// Format tool call/response payload for display
+function formatToolPayload(payload) {
+  if (payload === undefined || payload === null) return "";
+  let str = typeof payload === "string" ? payload : JSON.stringify(payload);
+  if (str.length > 500) {
+    str = str.substring(0, 500) + "...";
+  }
+  return str;
+}
+
 // Update status display
 function updateStatus(elementId, text) {
   if (elements[elementId]) {
@@ -302,6 +312,9 @@ function handleMessage(message) {
             `Calling function ${functionName} with parameters: ${JSON.stringify(parameters)}`
           );
 
+          // Visualize tool call in chat
+          addMessage(`${functionName}(${formatToolPayload(parameters)})`, "tool-call");
+
           // Check if this tool is declared as NON_BLOCKING
           const toolDef = state.client.functionsMap[functionName];
           const isNonBlocking = toolDef && toolDef.behavior === "NON_BLOCKING";
@@ -309,6 +322,10 @@ function handleMessage(message) {
           try {
             const result = await state.client.callFunction(functionName, parameters);
             const response = { result: result ?? "ok" };
+
+            // Visualize tool response in chat
+            addMessage(`${functionName} ➔ ${formatToolPayload(result ?? "ok")}`, "tool-response");
+
             // NON_BLOCKING tools require a scheduling hint so the model knows
             // how to handle the async result: INTERRUPT | WHEN_IDLE | SILENT
             if (isNonBlocking) {
@@ -318,6 +335,10 @@ function handleMessage(message) {
           } catch (err) {
             console.error(`Error calling function ${functionName}:`, err);
             const response = { error: err.message };
+
+            // Visualize tool error response in chat
+            addMessage(`${functionName} ➔ Error: ${err.message}`, "tool-response");
+
             if (isNonBlocking) {
               response.scheduling = toolDef.scheduling || "INTERRUPT";
             }
