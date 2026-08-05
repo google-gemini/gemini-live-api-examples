@@ -80,6 +80,22 @@ function parseResponseMessages(data) {
       });
     }
 
+    // Interaction status
+    const interactionStatus =
+      serverContent?.interactionStatus ||
+      serverContent?.interaction_status ||
+      data?.interactionStatus ||
+      data?.interaction_status;
+
+    if (interactionStatus) {
+      console.log("🔄 INTERACTION STATUS response", interactionStatus);
+      responses.push({
+        type: MultimodalLiveResponseType.INTERACTION_STATUS,
+        data: interactionStatus,
+        endOfTurn: false,
+      });
+    }
+
     // Interrupted
     if (serverContent?.interrupted) {
       console.log("🗣️ INTERRUPTED response");
@@ -90,17 +106,6 @@ function parseResponseMessages(data) {
     if (serverContent?.turnComplete) {
       console.log("🏁 TURN COMPLETE response");
       responses.push({ type: MultimodalLiveResponseType.TURN_COMPLETE, data: "", endOfTurn: true });
-    }
-
-    // Interaction status
-    if (serverContent?.interactionStatus || serverContent?.interaction_status) {
-      const status = serverContent.interactionStatus || serverContent.interaction_status;
-      console.log("🔄 INTERACTION STATUS response", status);
-      responses.push({
-        type: MultimodalLiveResponseType.INTERACTION_STATUS,
-        data: status,
-        endOfTurn: false,
-      });
     }
   } catch (err) {
     console.log("⚠️ Error parsing response data: ", err, data);

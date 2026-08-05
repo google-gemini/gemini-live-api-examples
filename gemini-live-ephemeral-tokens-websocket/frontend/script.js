@@ -9,6 +9,7 @@ const state = {
   audio: { streamer: null, player: null, isStreaming: false },
   video: { streamer: null, isStreaming: false },
   screen: { capture: null, isSharing: false },
+  lastInteractionStatus: "",
 };
 
 // DOM element cache
@@ -257,7 +258,10 @@ function disconnect() {
 
 // Handle messages
 function handleMessage(message) {
-  updateStatus("debugInfo", `Message: ${message.type}`);
+  // Don't let high-frequency audio packets overwrite meaningful debug info
+  if (message.type !== MultimodalLiveResponseType.AUDIO) {
+    updateStatus("debugInfo", `Message: ${message.type}`);
+  }
 
   switch (message.type) {
     case MultimodalLiveResponseType.TEXT:
@@ -351,20 +355,24 @@ function handleMessage(message) {
       });
       break;
 
+    case MultimodalLiveResponseType.INTERACTION_STATUS:
+      console.log("Interaction status:", message.data);
+      state.lastInteractionStatus = message.data;
+      updateStatus("debugInfo", `Interaction status: ${message.data}`);
+      break;
+
     case MultimodalLiveResponseType.TURN_COMPLETE:
       console.log("Turn complete:", message.data);
-      updateStatus("debugInfo", "Turn complete");
+      const statusSuffix = state.lastInteractionStatus
+        ? ` | Interaction status: ${state.lastInteractionStatus}`
+        : "";
+      updateStatus("debugInfo", `Turn complete${statusSuffix}`);
       break;
 
     case MultimodalLiveResponseType.INTERRUPTED:
       console.log("Interrupted");
       addMessage("[Interrupted]", "system");
       if (state.audio.player) state.audio.player.interrupt();
-      break;
-
-    case MultimodalLiveResponseType.INTERACTION_STATUS:
-      console.log("Interaction status:", message.data);
-      updateStatus("debugInfo", `Interaction status: ${message.data}`);
       break;
   }
 }
