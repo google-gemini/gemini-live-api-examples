@@ -533,8 +533,14 @@ function injectClientContent() {
 
 // Add message to chat
 function addMessage(text, type, append = false) {
+  // Hide welcome card when chat activity starts
+  const welcomeCard = elements.chatContainer.querySelector(".welcome-card");
+  if (welcomeCard && (type === "user" || type === "assistant" || type === "user-transcript")) {
+    welcomeCard.style.display = "none";
+  }
+
   // Get all div children (messages)
-  const messages = elements.chatContainer.querySelectorAll("div");
+  const messages = elements.chatContainer.querySelectorAll("div:not(.welcome-card)");
   const lastMessage = messages[messages.length - 1];
 
   // Check if we should append to the last message
@@ -548,6 +554,9 @@ function addMessage(text, type, append = false) {
   }
 
   elements.chatContainer.scrollTop = elements.chatContainer.scrollHeight;
+  if (elements.chatContainer.parentElement) {
+    elements.chatContainer.parentElement.scrollTop = elements.chatContainer.parentElement.scrollHeight;
+  }
 }
 
 // Update volume

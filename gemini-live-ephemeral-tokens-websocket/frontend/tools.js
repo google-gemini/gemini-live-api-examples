@@ -191,16 +191,50 @@ class DrawSVGTool extends FunctionCallDefinition {
 
     const container = document.getElementById("svgContainer");
     const section = document.getElementById("svgSection");
+    const chatContainer = document.getElementById("chatContainer");
 
+    // 1. Render inline message bubble in the chat flow
+    if (chatContainer) {
+      const msgDiv = document.createElement("div");
+      msgDiv.className = "assistant svg-chat-bubble";
+      msgDiv.style.background = "#ffffff";
+      msgDiv.style.border = "1px solid #cbd5e1";
+      msgDiv.style.borderLeft = "4px solid #2563eb";
+      msgDiv.style.padding = "20px";
+      msgDiv.style.borderRadius = "16px";
+      msgDiv.style.margin = "12px 0";
+      msgDiv.style.boxShadow = "0 4px 16px rgba(0, 0, 0, 0.06)";
+
+      msgDiv.innerHTML = `
+        <div style="font-size:0.75rem; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:#2563eb; margin-bottom:12px; display:flex; align-items:center; gap:6px;">
+          <span>✦ RENDERED SVG GRAPHIC</span>
+        </div>
+        <div class="svg-inline-render" style="display:flex; justify-content:center; align-items:center; width:100%; overflow:auto; background:#ffffff; padding:12px; border-radius:8px; border:1px solid #f1f5f9;">
+          ${svgString}
+        </div>
+      `;
+
+      chatContainer.appendChild(msgDiv);
+    }
+
+    // 2. Also populate standalone container if present
     if (container && section) {
       container.innerHTML = svgString;
       section.style.display = "block";
-      console.log("🎨 SVG rendered successfully");
-      return "ok";
-    } else {
-      console.error("draw_svg tool: DOM elements not found");
-      return "failed: DOM container not found";
     }
+
+    // 3. Smooth autoscroll to reveal the SVG
+    setTimeout(() => {
+      if (chatContainer) {
+        chatContainer.scrollTop = chatContainer.scrollHeight;
+        if (chatContainer.parentElement) {
+          chatContainer.parentElement.scrollTop = chatContainer.parentElement.scrollHeight;
+        }
+      }
+    }, 50);
+
+    console.log("🎨 SVG rendered successfully");
+    return "ok";
   }
 }
 
