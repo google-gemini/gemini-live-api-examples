@@ -1037,12 +1037,18 @@
       <!-- Sidebar Scrollable Settings Content -->
       <div class="sidebar-content">
         <!-- Section 1: Connection & Connect Actions -->
-        <div class="card card-primary">
-          <div class="card-header">
-            <span class="card-title">Connection</span>
-            <span id="sidebarStatusBadge" class="badge badge-offline">Offline</span>
-          </div>
-          <div class="card-body">
+        <details class="sidebar-accordion" open>
+          <summary>
+            <span class="accordion-title">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18.36 6.64a9 9 0 1 1-12.73 0"></path><line x1="12" y1="2" x2="12" y2="12"></line></svg>
+              Connection
+            </span>
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <span id="sidebarStatusBadge" class="badge badge-offline">Offline</span>
+              <svg class="chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+            </div>
+          </summary>
+          <div class="accordion-body">
             <div class="form-group">
               <label for="model">Model ID</label>
               <input type="text" id="model" value="gemini-3.1-flash-live-talker-only-rev25-rc3p3f" placeholder="Enter model ID" />
@@ -1057,7 +1063,7 @@
               <button id="disconnectBtn" class="btn btn-danger">Disconnect</button>
             </div>
           </div>
-        </div>
+        </details>
 
         <!-- Accordion Section 2: Gemini Behavior -->
         <details class="sidebar-accordion" open>
