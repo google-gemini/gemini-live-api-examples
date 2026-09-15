@@ -27,6 +27,8 @@ function initDOM() {
     "enableCssStyleTool",
     "enableGetOrderTool",
     "voiceSelect",
+    "enableThinking",
+    "thinkingLevelGroup",
     "thinkingLevelSelect",
     "enableDrawSvgTool",
     "temperature",
@@ -137,7 +139,7 @@ async function connect() {
       throw new Error(`Failed to fetch token: ${response.statusText}`);
     }
     const { token } = await response.json();
-    const model = elements.model.value;
+    const model = elements.model.value.trim() || "gemini-3.8-live";
 
     updateStatus("connectionStatus", "Connecting...");
 
@@ -153,7 +155,10 @@ async function connect() {
     state.client.googleGrounding = elements.enableGrounding.checked;
     state.client.responseModalities = ["AUDIO"];
     state.client.voiceName = elements.voiceSelect.value;
-    state.client.thinkingLevel = elements.thinkingLevelSelect.value;
+    state.client.enableThinking = elements.enableThinking ? elements.enableThinking.checked : false;
+    state.client.thinkingLevel = state.client.enableThinking
+      ? (elements.thinkingLevelSelect?.value || "minimal")
+      : null;
     state.client.temperature = parseFloat(elements.temperature.value);
 
     // Set automatic activity detection configuration
@@ -585,6 +590,14 @@ function initEventListeners() {
   elements.injectBtn.addEventListener("click", injectClientContent);
   elements.volume.addEventListener("input", updateVolume);
   elements.temperature.addEventListener("input", updateTemperature);
+
+  if (elements.enableThinking && elements.thinkingLevelGroup) {
+    elements.enableThinking.addEventListener("change", () => {
+      elements.thinkingLevelGroup.style.display = elements.enableThinking.checked
+        ? "block"
+        : "none";
+    });
+  }
 
   elements.chatInput.addEventListener("keypress", (e) => {
     if (e.key === "Enter") sendMessage();

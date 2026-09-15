@@ -14,7 +14,7 @@ CHUNK_SIZE = 1024
 pya = pyaudio.PyAudio()
 
 # --- Live API config ---
-MODEL = "gemini-3.1-flash-live-preview"
+MODEL = "gemini-3.8-live"
 CONFIG = {
     "response_modalities": ["AUDIO"],
     "system_instruction": "You are a helpful and friendly AI assistant.",

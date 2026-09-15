@@ -42,8 +42,6 @@ robust voice and video agents:
     Provides text transcripts of both user input and model output.
 *   [**Proactive audio**](https://ai.google.dev/gemini-api/docs/live-guide#proactive-audio):
     Lets you control when the model responds and in what contexts.
-*   [**Affective dialog**](https://ai.google.dev/gemini-api/docs/live-guide#affective-dialog):
-    Adapts response style and tone to match the user's input expression.
 
 ## Technical specifications
 

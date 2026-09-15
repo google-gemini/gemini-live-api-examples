@@ -8,7 +8,7 @@ const ai = new GoogleGenAI({});
 // More information at: https://ai.google.dev/gemini-api/docs/ephemeral-tokens
 
 // --- Live API config ---
-const model = 'gemini-3.1-flash-live-preview';
+const model = 'gemini-3.8-live';
 const config = {
   responseModalities: [Modality.AUDIO],
   systemInstruction: "You are a helpful and friendly AI assistant.",

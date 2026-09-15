@@ -167,16 +167,17 @@ class FunctionCallDefinition {
  * Main Gemini Live API client
  */
 class GeminiLiveAPI {
-  constructor(token, model) {
+  constructor(token, model = "gemini-3.8-live") {
     this.token = token;
-    this.model = model;
+    this.model = model || "gemini-3.8-live";
     this.modelUri = `models/${this.model}`;
 
     this.responseModalities = ["AUDIO"];
     this.systemInstructions = "";
     this.googleGrounding = false;
     this.voiceName = "Puck"; // Default voice
-    this.thinkingLevel = "minimal"; // Default thinking level
+    this.enableThinking = false; // By default thinking is off
+    this.thinkingLevel = null;
     this.temperature = 1.0; // Default temperature
     this.inputAudioTranscription = false;
     this.outputAudioTranscription = false;
@@ -370,9 +371,12 @@ class GeminiLiveAPI {
               },
             },
           },
-          thinkingConfig: {
-            thinkingLevel: this.thinkingLevel,
-          },
+          // thinkingConfig is omitted by default; included only if enableThinking is toggled on
+          ...(this.enableThinking && this.thinkingLevel && {
+            thinkingConfig: {
+              thinkingLevel: this.thinkingLevel,
+            },
+          }),
         },
         systemInstruction: { parts: [{ text: this.systemInstructions }] },
         tools: [{ functionDeclarations: tools }],

@@ -45,21 +45,21 @@ class AddCSSStyleTool extends FunctionCallDefinition {
   constructor() {
     super(
       "add_css_style",
-      "Injects CSS styles into the current page with !important flag",
+      "Injects CSS styles into the current page with !important flag. Use this tool whenever asked to change the background color, styles, colors, or appearance of the page.",
       {
         type: "object",
         properties: {
           selector: {
             type: "string",
-            description: "CSS selector to target elements (e.g., 'body', '.class', '#id')"
+            description: "CSS selector to target elements (e.g., 'body' for page background, '.main-content', '.sidebar', '#id')"
           },
           property: {
             type: "string",
-            description: "CSS property to set (e.g., 'background-color', 'font-size', 'display')"
+            description: "CSS property to set (e.g., 'background-color', 'color', 'font-size')"
           },
           value: {
             type: "string",
-            description: "Value for the CSS property (e.g., 'red', '20px', 'none')"
+            description: "Value for the CSS property (e.g., 'red', '#4f46e5', 'none')"
           },
           styleId: {
             type: "string",
@@ -67,41 +67,74 @@ class AddCSSStyleTool extends FunctionCallDefinition {
           }
         }
       },
-      ["selector", "property", "value"]
+      ["selector", "property", "value"],
+      "NON_BLOCKING"
     );
+    this.scheduling = "SILENT";
   }
 
   functionToCall(parameters) {
-    const { selector, property, value, styleId } = parameters;
+    let { selector, property, value, styleId } = parameters;
+    if (!selector || !property || !value) {
+      console.warn("add_css_style: missing parameters", parameters);
+      return "failed: missing selector, property, or value";
+    }
+
+    property = property.trim();
+    value = value.trim();
+    selector = selector.trim();
+
+    // Check if modifying page background
+    const isBgProperty =
+      property.toLowerCase() === "background" ||
+      property.toLowerCase() === "background-color";
+    const isBodySelector = ["body", "html", ":root", "*"].includes(
+      selector.toLowerCase()
+    );
+
+    if (isBgProperty && isBodySelector) {
+      // Update root CSS variable so the entire layout updates smoothly
+      document.documentElement.style.setProperty("--bg-main", value);
+      document.body.style.setProperty("background-color", value, "important");
+      selector = "body, .main-content, .chat-viewport, .app-layout, :root";
+    } else if (isBgProperty) {
+      const matched = document.querySelectorAll(selector);
+      matched.forEach((el) => el.style.setProperty(property, value, "important"));
+    }
 
     // Create or find the style element
     let styleElement;
     if (styleId) {
       styleElement = document.getElementById(styleId);
       if (!styleElement) {
-        styleElement = document.createElement('style');
+        styleElement = document.createElement("style");
         styleElement.id = styleId;
         document.head.appendChild(styleElement);
       }
     } else {
-      styleElement = document.createElement('style');
-      document.head.appendChild(styleElement);
+      styleElement = document.getElementById("injected-gemini-styles");
+      if (!styleElement) {
+        styleElement = document.createElement("style");
+        styleElement.id = "injected-gemini-styles";
+        document.head.appendChild(styleElement);
+      }
     }
 
     // Create the CSS rule with !important
-    const cssRule = `${selector} { ${property}: ${value} !important; }`;
+    const cssRule = `${selector} { ${property}: ${value} !important; }\n`;
 
     // Add the CSS rule to the style element
     if (styleId) {
-      // If using an ID, replace the content
       styleElement.textContent = cssRule;
     } else {
-      // Otherwise append to any existing content
       styleElement.textContent += cssRule;
     }
 
     console.log(`🎨 CSS style injected: ${cssRule}`);
-    console.log(`   Applied to ${document.querySelectorAll(selector).length} element(s)`);
+    console.log(
+      `   Applied to ${document.querySelectorAll(selector).length} element(s)`
+    );
+    return `Successfully applied ${property}: ${value} to ${selector}`;
   }
 }
 
