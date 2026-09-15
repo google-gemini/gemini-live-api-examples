@@ -25,9 +25,9 @@ GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 if not GEMINI_API_KEY:
     print("⚠️ Warning: GEMINI_API_KEY not found in environment. Please set it in .env or as an environment variable.")
     # Fallback to default client which might pick up GOOGLE_API_KEY
-    client = genai.Client(http_options={"api_version": "v1alpha"})
+    client = genai.Client()
 else:
-    client = genai.Client(api_key=GEMINI_API_KEY, http_options={"api_version": "v1alpha"})
+    client = genai.Client(api_key=GEMINI_API_KEY)
 
 
 async def get_ephemeral_token(request):
@@ -37,7 +37,7 @@ async def get_ephemeral_token(request):
         # data = await request.json()
         # api_key = data.get("api_key")
         # if api_key:
-        #     local_client = genai.Client(api_key=api_key, http_options={'api_version': 'v1alpha'})
+        #     local_client = genai.Client(api_key=api_key, http_options={'api_version': 'v1beta'})
         # else:
         #     local_client = client
 
@@ -50,7 +50,7 @@ async def get_ephemeral_token(request):
                 "uses": 1,
                 "expire_time": expire_time.isoformat(),
                 "new_session_expire_time": (now + datetime.timedelta(minutes=1)).isoformat(),
-                "http_options": {"api_version": "v1alpha"},
+                "http_options": {"api_version": "v1beta"},
             }
         )
 

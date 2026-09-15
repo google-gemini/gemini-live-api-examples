@@ -14,6 +14,7 @@ const MultimodalLiveResponseType = {
   ERROR: "ERROR",
   INPUT_TRANSCRIPTION: "INPUT_TRANSCRIPTION",
   OUTPUT_TRANSCRIPTION: "OUTPUT_TRANSCRIPTION",
+  INTERACTION_STATUS: "INTERACTION_STATUS",
 };
 
 /**
@@ -79,6 +80,22 @@ function parseResponseMessages(data) {
       });
     }
 
+    // Interaction status
+    const interactionStatus =
+      serverContent?.interactionStatus ||
+      serverContent?.interaction_status ||
+      data?.interactionStatus ||
+      data?.interaction_status;
+
+    if (interactionStatus) {
+      console.log("🔄 INTERACTION STATUS response", interactionStatus);
+      responses.push({
+        type: MultimodalLiveResponseType.INTERACTION_STATUS,
+        data: interactionStatus,
+        endOfTurn: false,
+      });
+    }
+
     // Interrupted
     if (serverContent?.interrupted) {
       console.log("🗣️ INTERRUPTED response");
@@ -101,11 +118,21 @@ function parseResponseMessages(data) {
  * Function call definition for tool use
  */
 class FunctionCallDefinition {
-  constructor(name, description, parameters, requiredParameters) {
+  /**
+   * @param {string} name
+   * @param {string} description
+   * @param {object} parameters  - JSON Schema object
+   * @param {string[]} requiredParameters
+   * @param {string|null} behavior - Optional. "NON_BLOCKING" to run the function
+   *   asynchronously (the model keeps talking while it waits for the result).
+   *   Leave null/undefined for default blocking behaviour.
+   */
+  constructor(name, description, parameters, requiredParameters, behavior = null) {
     this.name = name;
     this.description = description;
     this.parameters = parameters;
     this.requiredParameters = requiredParameters;
+    this.behavior = behavior; // "NON_BLOCKING" | null
   }
 
   functionToCall(parameters) {
@@ -118,17 +145,21 @@ class FunctionCallDefinition {
       description: this.description,
       parameters: { required: this.requiredParameters, ...this.parameters },
     };
+    // Include behavior field when set — required by the Live API for NON_BLOCKING tools
+    if (this.behavior) {
+      definition.behavior = this.behavior;
+    }
     console.log("created FunctionDefinition: ", definition);
     return definition;
   }
 
-  runFunction(parameters) {
+  async runFunction(parameters) {
     console.log(
       `⚡ Running ${this.name} function with parameters: ${JSON.stringify(
         parameters
       )}`
     );
-    return this.functionToCall(parameters);
+    return await this.functionToCall(parameters);
   }
 }
 
@@ -136,15 +167,17 @@ class FunctionCallDefinition {
  * Main Gemini Live API client
  */
 class GeminiLiveAPI {
-  constructor(token, model) {
+  constructor(token, model = "gemini-3.8-live") {
     this.token = token;
-    this.model = model;
+    this.model = model || "gemini-3.8-live";
     this.modelUri = `models/${this.model}`;
 
     this.responseModalities = ["AUDIO"];
     this.systemInstructions = "";
     this.googleGrounding = false;
     this.voiceName = "Puck"; // Default voice
+    this.enableThinking = false; // By default thinking is off
+    this.thinkingLevel = null;
     this.temperature = 1.0; // Default temperature
     this.inputAudioTranscription = false;
     this.outputAudioTranscription = false;
@@ -165,8 +198,8 @@ class GeminiLiveAPI {
 
     this.activityHandling = "ACTIVITY_HANDLING_UNSPECIFIED";
 
-    this.serviceUrl = `wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1alpha.GenerativeService.BidiGenerateContentConstrained?access_token=${this.token}`;
-    console.log("Service URL (v1alpha): ", this.serviceUrl);
+    this.serviceUrl = `wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContentConstrained?access_token=${this.token}`;
+    console.log("Service URL (v1beta): ", this.serviceUrl);
 
     this.connected = false;
     this.webSocket = null;
@@ -239,9 +272,9 @@ class GeminiLiveAPI {
     console.log("added function: ", newFunction);
   }
 
-  callFunction(functionName, parameters) {
+  async callFunction(functionName, parameters) {
     const functionToCall = this.functionsMap[functionName];
-    return functionToCall.runFunction(parameters);
+    return await functionToCall.runFunction(parameters);
   }
 
   connect() {
@@ -338,6 +371,12 @@ class GeminiLiveAPI {
               },
             },
           },
+          // thinkingConfig is omitted by default; included only if enableThinking is toggled on
+          ...(this.enableThinking && this.thinkingLevel && {
+            thinkingConfig: {
+              thinkingLevel: this.thinkingLevel,
+            },
+          }),
         },
         systemInstruction: { parts: [{ text: this.systemInstructions }] },
         tools: [{ functionDeclarations: tools }],
@@ -386,6 +425,25 @@ class GeminiLiveAPI {
     const message = {
       realtimeInput: {
         text: text,
+      },
+    };
+    this.sendMessage(message);
+  }
+
+  sendClientContentMessage(text, turnComplete = true) {
+    const message = {
+      clientContent: {
+        turns: [
+          {
+            role: "user",
+            parts: [
+              {
+                text: text,
+              },
+            ],
+          },
+        ],
+        turnComplete: turnComplete,
       },
     };
     this.sendMessage(message);

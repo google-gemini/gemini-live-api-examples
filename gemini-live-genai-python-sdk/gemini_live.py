@@ -121,6 +121,12 @@ class GeminiLive:
                                 if server_content.output_transcription and server_content.output_transcription.text:
                                     await event_queue.put({"type": "gemini", "text": server_content.output_transcription.text})
                                 
+                                if server_content.interaction_status:
+                                    status_val = server_content.interaction_status
+                                    status_str = status_val.name if hasattr(status_val, 'name') else str(status_val)
+                                    logger.debug(f"Interaction status: {status_str}")
+                                    await event_queue.put({"type": "interaction_status", "status": status_str})
+
                                 if server_content.turn_complete:
                                     await event_queue.put({"type": "turn_complete"})
                                 

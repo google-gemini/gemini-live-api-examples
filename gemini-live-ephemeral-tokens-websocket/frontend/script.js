@@ -9,6 +9,7 @@ const state = {
   audio: { streamer: null, player: null, isStreaming: false },
   video: { streamer: null, isStreaming: false },
   screen: { capture: null, isSharing: false },
+  lastInteractionStatus: "",
 };
 
 // DOM element cache
@@ -24,7 +25,12 @@ function initDOM() {
     "enableGrounding",
     "enableAlertTool",
     "enableCssStyleTool",
+    "enableGetOrderTool",
     "voiceSelect",
+    "enableThinking",
+    "thinkingLevelGroup",
+    "thinkingLevelSelect",
+    "enableDrawSvgTool",
     "temperature",
     "temperatureValue",
     "disableActivityDetection",
@@ -47,6 +53,9 @@ function initDOM() {
     "chatContainer",
     "chatInput",
     "sendBtn",
+    "clientContentInput",
+    "injectBtn",
+    "turnComplete",
     "debugInfo",
     "setupJsonSection",
     "setupJsonDisplay",
@@ -102,6 +111,16 @@ function createMessage(text, className = "") {
   return div;
 }
 
+// Format tool call/response payload for display
+function formatToolPayload(payload) {
+  if (payload === undefined || payload === null) return "";
+  let str = typeof payload === "string" ? payload : JSON.stringify(payload);
+  if (str.length > 500) {
+    str = str.substring(0, 500) + "...";
+  }
+  return str;
+}
+
 // Update status display
 function updateStatus(elementId, text) {
   if (elements[elementId]) {
@@ -120,7 +139,7 @@ async function connect() {
       throw new Error(`Failed to fetch token: ${response.statusText}`);
     }
     const { token } = await response.json();
-    const model = elements.model.value;
+    const model = elements.model.value.trim() || "gemini-3.8-live";
 
     updateStatus("connectionStatus", "Connecting...");
 
@@ -136,6 +155,10 @@ async function connect() {
     state.client.googleGrounding = elements.enableGrounding.checked;
     state.client.responseModalities = ["AUDIO"];
     state.client.voiceName = elements.voiceSelect.value;
+    state.client.enableThinking = elements.enableThinking ? elements.enableThinking.checked : false;
+    state.client.thinkingLevel = state.client.enableThinking
+      ? (elements.thinkingLevelSelect?.value || "minimal")
+      : null;
     state.client.temperature = parseFloat(elements.temperature.value);
 
     // Set automatic activity detection configuration
@@ -166,6 +189,20 @@ async function connect() {
         const cssStyleTool = new AddCSSStyleTool();
         state.client.addFunction(cssStyleTool);
         console.log("✅ CSS style tool enabled");
+      }
+
+      // Add get order tool if enabled
+      if (elements.enableGetOrderTool.checked) {
+        const getOrderTool = new GetOrderTool();
+        state.client.addFunction(getOrderTool);
+        console.log("✅ Get order tool enabled");
+      }
+
+      // Add draw SVG tool if enabled
+      if (elements.enableDrawSvgTool.checked) {
+        const drawSvgTool = new DrawSVGTool();
+        state.client.addFunction(drawSvgTool);
+        console.log("✅ Draw SVG tool enabled");
       }
     } else {
       console.log(
@@ -235,7 +272,10 @@ function disconnect() {
 
 // Handle messages
 function handleMessage(message) {
-  updateStatus("debugInfo", `Message: ${message.type}`);
+  // Don't let high-frequency audio packets overwrite meaningful debug info
+  if (message.type !== MultimodalLiveResponseType.AUDIO) {
+    updateStatus("debugInfo", `Message: ${message.type}`);
+  }
 
   switch (message.type) {
     case MultimodalLiveResponseType.TEXT:
@@ -280,41 +320,67 @@ function handleMessage(message) {
     case MultimodalLiveResponseType.TOOL_CALL:
       console.log("🛠️ Tool call received: ", message.data);
       const functionCalls = message.data.functionCalls;
-      const functionResponses = [];
-      for (let index = 0; index < functionCalls.length; index++) {
-        const functionCall = functionCalls[index];
-        const functionName = functionCall.name;
-        const functionCallId = functionCall.id;
-        const parameters = functionCall.args;
-        console.log(
-          `Calling function ${functionName} with parameters: ${JSON.stringify(
-            parameters
-          )}`
-        );
-        let result;
-        try {
-          result = state.client.callFunction(functionName, parameters);
-          functionResponses.push({
-            id: functionCallId,
-            name: functionName,
-            response: { result: result ?? "ok" },
-          });
-        } catch (err) {
-          console.error(`Error calling function ${functionName}:`, err);
-          functionResponses.push({
-            id: functionCallId,
-            name: functionName,
-            response: { error: err.message },
-          });
-        }
-      }
-      // Send all function responses back to the API
-      state.client.sendToolResponse(functionResponses);
+
+      // Fan out all function calls concurrently (non-blocking — async tools
+      // like get_order run in parallel and don't stall each other or the UI)
+      Promise.all(
+        functionCalls.map(async (functionCall) => {
+          const { name: functionName, id: functionCallId, args: parameters } = functionCall;
+          console.log(
+            `Calling function ${functionName} with parameters: ${JSON.stringify(parameters)}`
+          );
+
+          // Visualize tool call in chat
+          addMessage(`${functionName}(${formatToolPayload(parameters)})`, "tool-call");
+
+          // Check if this tool is declared as NON_BLOCKING
+          const toolDef = state.client.functionsMap[functionName];
+          const isNonBlocking = toolDef && toolDef.behavior === "NON_BLOCKING";
+
+          try {
+            const result = await state.client.callFunction(functionName, parameters);
+            const response = { result: result ?? "ok" };
+
+            // Visualize tool response in chat
+            addMessage(`${functionName} ➔ ${formatToolPayload(result ?? "ok")}`, "tool-response");
+
+            // NON_BLOCKING tools require a scheduling hint so the model knows
+            // how to handle the async result: INTERRUPT | WHEN_IDLE | SILENT
+            if (isNonBlocking) {
+              response.scheduling = toolDef.scheduling || "INTERRUPT";
+            }
+            return { id: functionCallId, name: functionName, response };
+          } catch (err) {
+            console.error(`Error calling function ${functionName}:`, err);
+            const response = { error: err.message };
+
+            // Visualize tool error response in chat
+            addMessage(`${functionName} ➔ Error: ${err.message}`, "tool-response");
+
+            if (isNonBlocking) {
+              response.scheduling = toolDef.scheduling || "INTERRUPT";
+            }
+            return { id: functionCallId, name: functionName, response };
+          }
+        })
+      ).then((functionResponses) => {
+        // Send all responses back once every call has settled
+        state.client.sendToolResponse(functionResponses);
+      });
+      break;
+
+    case MultimodalLiveResponseType.INTERACTION_STATUS:
+      console.log("Interaction status:", message.data);
+      state.lastInteractionStatus = message.data;
+      updateStatus("debugInfo", `Interaction status: ${message.data}`);
       break;
 
     case MultimodalLiveResponseType.TURN_COMPLETE:
       console.log("Turn complete:", message.data);
-      updateStatus("debugInfo", "Turn complete");
+      const statusSuffix = state.lastInteractionStatus
+        ? ` | Interaction status: ${state.lastInteractionStatus}`
+        : "";
+      updateStatus("debugInfo", `Turn complete${statusSuffix}`);
       break;
 
     case MultimodalLiveResponseType.INTERRUPTED:
@@ -451,7 +517,6 @@ async function toggleScreen() {
   }
 }
 
-// Send message
 function sendMessage() {
   const message = elements.chatInput.value.trim();
   if (!message) return;
@@ -465,10 +530,31 @@ function sendMessage() {
   }
 }
 
+// Inject client content into model history
+function injectClientContent() {
+  const message = elements.clientContentInput.value.trim();
+  if (!message) return;
+
+  if (state.client) {
+    addMessage("[Injected Client Content]: " + message, "user");
+    const turnComplete = elements.turnComplete.checked;
+    state.client.sendClientContentMessage(message, turnComplete);
+    elements.clientContentInput.value = "";
+  } else {
+    addMessage("[Connect to Gemini first]", "system");
+  }
+}
+
 // Add message to chat
 function addMessage(text, type, append = false) {
+  // Hide welcome card when chat activity starts
+  const welcomeCard = elements.chatContainer.querySelector(".welcome-card");
+  if (welcomeCard && (type === "user" || type === "assistant" || type === "user-transcript")) {
+    welcomeCard.style.display = "none";
+  }
+
   // Get all div children (messages)
-  const messages = elements.chatContainer.querySelectorAll("div");
+  const messages = elements.chatContainer.querySelectorAll("div:not(.welcome-card)");
   const lastMessage = messages[messages.length - 1];
 
   // Check if we should append to the last message
@@ -482,6 +568,9 @@ function addMessage(text, type, append = false) {
   }
 
   elements.chatContainer.scrollTop = elements.chatContainer.scrollHeight;
+  if (elements.chatContainer.parentElement) {
+    elements.chatContainer.parentElement.scrollTop = elements.chatContainer.parentElement.scrollHeight;
+  }
 }
 
 // Update volume
@@ -500,7 +589,6 @@ function updateTemperature() {
   updateStatus("temperatureValue", value);
 }
 
-// Event listeners
 function initEventListeners() {
   elements.connectBtn.addEventListener("click", connect);
   elements.disconnectBtn.addEventListener("click", disconnect);
@@ -508,11 +596,24 @@ function initEventListeners() {
   elements.startVideoBtn.addEventListener("click", toggleVideo);
   elements.startScreenBtn.addEventListener("click", toggleScreen);
   elements.sendBtn.addEventListener("click", sendMessage);
+  elements.injectBtn.addEventListener("click", injectClientContent);
   elements.volume.addEventListener("input", updateVolume);
   elements.temperature.addEventListener("input", updateTemperature);
 
+  if (elements.enableThinking && elements.thinkingLevelGroup) {
+    elements.enableThinking.addEventListener("change", () => {
+      elements.thinkingLevelGroup.style.display = elements.enableThinking.checked
+        ? "block"
+        : "none";
+    });
+  }
+
   elements.chatInput.addEventListener("keypress", (e) => {
     if (e.key === "Enter") sendMessage();
+  });
+
+  elements.clientContentInput.addEventListener("keypress", (e) => {
+    if (e.key === "Enter") injectClientContent();
   });
 }
 

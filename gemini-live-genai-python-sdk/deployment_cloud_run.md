@@ -34,13 +34,13 @@ Run the following command from the root of the repository to build and deploy th
 gcloud run deploy gemini-live-demo \
     --source . \
     --set-secrets GEMINI_API_KEY=GEMINI_API_KEY:latest \
-    --set-env-vars MODEL=gemini-3.1-flash-live-preview \
+    --set-env-vars MODEL=gemini-3.8-live \
     --allow-unauthenticated \
     --region us-central1
 ```
 
 > [!TIP]
-> The `MODEL` env var is optional and defaults to `gemini-3.1-flash-live-preview`.
+> The `MODEL` env var is optional and defaults to `gemini-3.8-live`.
 
 ### 4. Access the Application
 

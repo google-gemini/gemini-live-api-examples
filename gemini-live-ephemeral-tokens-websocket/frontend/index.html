@@ -4,318 +4,1420 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Gemini Live API - Vanilla JS Example</title>
+  <title>Gemini Live API - Ephemeral Tokens Workstation</title>
+
+  <!-- Google Fonts: Instrument Serif (Editorial Display), Plus Jakarta Sans (Clean UI), JetBrains Mono (Code) -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:wght@400;500;600&family=Plus+Jakarta+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap" rel="stylesheet">
+
   <style>
     :root {
-      /* Google Brand Colors */
-      --google-blue: #4285f4;
-      --google-red: #db4437;
-      --google-yellow: #f4b400;
-      --google-green: #0f9d58;
+      /* Premium Light Mode Palette */
+      --bg-main: #fbfbfd;
+      --bg-sidebar: #ffffff;
+      --bg-card: #ffffff;
+      --bg-input: #f8fafc;
+      
+      --border-color: #e2e8f0;
+      --border-hover: #cbd5e1;
+      --border-focus: #2563eb;
+
+      --text-main: #0f172a;
+      --text-muted: #475569;
+      --text-dim: #94a3b8;
+
+      --accent-blue: #2563eb;
+      --accent-blue-hover: #1d4ed8;
+      --accent-purple: #7c3aed;
+      --accent-emerald: #059669;
+      --accent-amber: #d97706;
+      --accent-rose: #e11d48;
+
+      --font-display: 'Instrument Serif', Georgia, serif;
+      --font-sans: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+      --font-mono: 'JetBrains Mono', monospace;
+
+      --radius-lg: 16px;
+      --radius-md: 10px;
+      --radius-sm: 6px;
+
+      --sidebar-width: 360px;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
     }
 
     body {
-      font-family: Arial, sans-serif;
-      transition: all 0.5s ease-in-out;
+      font-family: var(--font-sans);
+      background-color: var(--bg-main);
+      color: var(--text-main);
+      height: 100vh;
+      overflow: hidden;
+      -webkit-font-smoothing: antialiased;
+      transition: background-color 0.4s ease, background 0.4s ease;
     }
 
-    .container {
+    /* Layout structure */
+    .app-layout {
       display: flex;
+      height: 100vh;
+      width: 100vw;
+      overflow: hidden;
+      position: relative;
+    }
+
+    /* Collapsible Left Sidebar */
+    .sidebar {
+      width: var(--sidebar-width);
+      flex-shrink: 0;
+      background: var(--bg-sidebar);
+      border-right: 1px solid var(--border-color);
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      max-height: 100vh;
+      overflow: hidden;
+      transition: margin-left 0.3s cubic-bezier(0.16, 1, 0.3, 1), transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+      z-index: 50;
+    }
+
+    .sidebar.collapsed {
+      margin-left: calc(-1 * var(--sidebar-width));
+    }
+
+    .sidebar-header {
+      flex-shrink: 0;
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--border-color);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: #ffffff;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .brand-icon {
+      width: 38px;
+      height: 38px;
+      border-radius: 10px;
+      background: #f1f5f9;
+      border: 1px solid var(--border-color);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--accent-blue);
+    }
+
+    .brand-text {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .brand-title {
+      font-family: var(--font-display);
+      font-size: 1.4rem;
+      font-weight: 400;
+      letter-spacing: -0.01em;
+      color: var(--text-main);
+      line-height: 1.1;
+    }
+
+    .brand-subtitle {
+      font-size: 0.7rem;
+      color: var(--text-dim);
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+
+    .icon-btn {
+      background: transparent;
+      border: none;
+      color: var(--text-muted);
+      cursor: pointer;
+      padding: 6px;
+      border-radius: var(--radius-sm);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.2s;
+    }
+
+    .icon-btn:hover {
+      background: #f1f5f9;
+      color: var(--text-main);
+    }
+
+    .sidebar-content {
+      flex: 1 1 0%;
+      min-height: 0;
+      max-height: 100%;
+      overflow-y: auto;
+      overflow-x: hidden;
+      padding: 16px 16px 48px 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+
+    .sidebar-content::-webkit-scrollbar {
+      width: 6px;
+    }
+    .sidebar-content::-webkit-scrollbar-track {
+      background: transparent;
+    }
+    .sidebar-content::-webkit-scrollbar-thumb {
+      background: #cbd5e1;
+      border-radius: 4px;
+    }
+    .sidebar-content::-webkit-scrollbar-thumb:hover {
+      background: #94a3b8;
+    }
+
+    /* Cards & Accordions */
+    .card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: var(--radius-md);
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
+      overflow: hidden;
+    }
+
+    .card-primary {
+      border-color: #cbd5e1;
+      background: #ffffff;
+    }
+
+    .card-header {
+      padding: 14px 16px;
+      border-bottom: 1px solid var(--border-color);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: #f8fafc;
+    }
+
+    .card-title {
+      font-size: 0.82rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--text-muted);
+    }
+
+    .card-body {
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+
+    /* Accordions */
+    details.sidebar-accordion {
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: var(--radius-md);
+      overflow: hidden;
+      transition: border-color 0.2s;
+      box-shadow: 0 1px 2px rgba(0, 0, 0, 0.02);
+    }
+
+    details.sidebar-accordion:hover {
+      border-color: var(--border-hover);
+    }
+
+    details.sidebar-accordion summary {
+      padding: 14px 16px;
+      font-size: 0.88rem;
+      font-weight: 600;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      list-style: none;
+      user-select: none;
+      color: var(--text-muted);
+      transition: color 0.2s, background 0.2s;
+    }
+
+    details.sidebar-accordion summary::-webkit-details-marker {
+      display: none;
+    }
+
+    details.sidebar-accordion summary:hover {
+      color: var(--text-main);
+      background: #f8fafc;
+    }
+
+    details.sidebar-accordion[open] summary {
+      color: var(--text-main);
+      border-bottom: 1px solid var(--border-color);
+      background: #f8fafc;
+    }
+
+    .accordion-title {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .chevron {
+      transition: transform 0.2s ease;
+    }
+
+    details[open] .chevron {
+      transform: rotate(180deg);
+    }
+
+    .accordion-body {
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      background: #ffffff;
+    }
+
+    /* Form Controls */
+    .form-group {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .label-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    label {
+      font-size: 0.78rem;
+      font-weight: 600;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+
+    .value-tag {
+      font-size: 0.75rem;
+      font-family: var(--font-mono);
+      background: #eff6ff;
+      color: var(--accent-blue);
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-weight: 600;
+    }
+
+    input[type="text"],
+    input[type="number"],
+    select,
+    textarea {
+      width: 100%;
+      background: var(--bg-input);
+      border: 1px solid var(--border-color);
+      border-radius: var(--radius-sm);
+      color: var(--text-main);
+      font-family: var(--font-sans);
+      font-size: 0.88rem;
+      padding: 9px 12px;
+      transition: all 0.2s;
+    }
+
+    input[type="text"]:focus,
+    input[type="number"]:focus,
+    select:focus,
+    textarea:focus {
+      outline: none;
+      background: #ffffff;
+      border-color: var(--border-focus);
+      box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+    }
+
+    textarea {
+      resize: vertical;
+      min-height: 60px;
+    }
+
+    input[type="range"] {
+      width: 100%;
+      accent-color: var(--accent-blue);
+      cursor: pointer;
+    }
+
+    .form-check {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      cursor: pointer;
+    }
+
+    .form-check input[type="checkbox"] {
+      margin-top: 2px;
+      accent-color: var(--accent-blue);
+      width: 15px;
+      height: 15px;
+      cursor: pointer;
+    }
+
+    .form-check label {
+      font-size: 0.85rem;
+      font-weight: 500;
+      color: var(--text-main);
+      cursor: pointer;
+      line-height: 1.4;
+      text-transform: none;
+      letter-spacing: normal;
+    }
+
+    .help-text {
+      font-size: 0.75rem;
+      color: var(--text-dim);
+      display: block;
+      font-weight: 400;
+    }
+
+    .divider {
+      border: none;
+      border-top: 1px solid var(--border-color);
+      margin: 4px 0;
+    }
+
+    /* Buttons */
+    .btn {
+      font-family: var(--font-sans);
+      font-size: 0.85rem;
+      font-weight: 600;
+      padding: 9px 16px;
+      border-radius: var(--radius-sm);
+      border: none;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      transition: all 0.2s ease;
+    }
+
+    .btn-group {
+      display: flex;
+      gap: 8px;
+    }
+
+    .btn-group .btn {
+      flex: 1;
+    }
+
+    .btn-primary {
+      background: #0f172a;
+      color: #ffffff;
+      box-shadow: 0 2px 6px rgba(15, 23, 42, 0.15);
+    }
+
+    .btn-primary:hover {
+      background: #1e293b;
+      box-shadow: 0 4px 10px rgba(15, 23, 42, 0.25);
+      transform: translateY(-1px);
+    }
+
+    .btn-secondary {
+      background: #ffffff;
+      border: 1px solid var(--border-color);
+      color: var(--text-main);
+    }
+
+    .btn-secondary:hover {
+      background: #f8fafc;
+      border-color: var(--border-hover);
+    }
+
+    .btn-danger {
+      background: #fef2f2;
+      border: 1px solid #fecaca;
+      color: var(--accent-rose);
+    }
+
+    .btn-danger:hover {
+      background: #fee2e2;
+    }
+
+    .btn-pill {
+      border-radius: 20px;
+      background: #ffffff;
+      border: 1px solid var(--border-color);
+      color: var(--text-muted);
+      padding: 7px 14px;
+      font-size: 0.82rem;
+      box-shadow: 0 1px 2px rgba(0,0,0,0.03);
+    }
+
+    .btn-pill:hover {
+      background: #f8fafc;
+      color: var(--text-main);
+      border-color: var(--border-hover);
+    }
+
+    .btn-pill.media-active {
+      background: #fef2f2;
+      border-color: #fca5a5;
+      color: var(--accent-rose);
+    }
+
+    .btn-round {
+      border-radius: 50%;
+      width: 42px;
+      height: 42px;
+      padding: 0;
+      background: var(--accent-blue);
+      color: #ffffff;
+    }
+
+    .btn-round:hover {
+      background: var(--accent-blue-hover);
+    }
+
+    /* Badges */
+    .badge {
+      font-size: 0.7rem;
+      font-weight: 700;
+      padding: 3px 8px;
+      border-radius: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .badge-offline {
+      background: #f1f5f9;
+      color: var(--text-dim);
+      border: 1px solid var(--border-color);
+    }
+
+    .badge-pending {
+      background: #fef3c7;
+      color: var(--accent-amber);
+      border: 1px solid #fde68a;
+    }
+
+    .badge-online {
+      background: #ecfdf5;
+      color: var(--accent-emerald);
+      border: 1px solid #a7f3d0;
+    }
+
+    /* Main Viewport */
+    .main-content {
+      flex: 1 1 0%;
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      max-height: 100vh;
+      background: var(--bg-main);
+      position: relative;
+      overflow: hidden;
+      transition: background-color 0.4s ease, background 0.4s ease;
+    }
+
+    /* Top Bar */
+    .top-bar {
+      flex-shrink: 0;
+      height: 64px;
+      padding: 0 28px;
+      border-bottom: 1px solid var(--border-color);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: rgba(255, 255, 255, 0.85);
+      backdrop-filter: blur(12px);
+      z-index: 30;
+    }
+
+    .top-bar-left,
+    .top-bar-right {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .status-indicator {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      background: #ffffff;
+      border: 1px solid var(--border-color);
+      padding: 6px 14px;
+      border-radius: 20px;
+      box-shadow: 0 1px 2px rgba(0,0,0,0.02);
+    }
+
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--text-dim);
+      transition: all 0.3s;
+    }
+
+    .status-dot.dot-online {
+      background: var(--accent-emerald);
+      box-shadow: 0 0 8px var(--accent-emerald);
+    }
+
+    .status-dot.dot-pending {
+      background: var(--accent-amber);
+      box-shadow: 0 0 8px var(--accent-amber);
+      animation: pulse 1.2s infinite;
+    }
+
+    .status-dot.dot-offline {
+      background: var(--text-dim);
+    }
+
+    @keyframes pulse {
+      0% { opacity: 0.4; }
+      50% { opacity: 1; }
+      100% { opacity: 0.4; }
+    }
+
+    .status-text {
+      font-size: 0.82rem;
+      font-weight: 500;
+      color: var(--text-muted);
+    }
+
+    .media-toolbar {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    /* Floating Video Preview */
+    .video-preview-floating {
+      position: absolute;
+      top: 76px;
+      right: 28px;
+      z-index: 40;
+    }
+
+    #videoPreview {
+      width: 260px;
+      border-radius: var(--radius-md);
+      border: 2px solid var(--accent-blue);
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.12);
+      background: #000;
+    }
+
+    #videoPreview[hidden] {
+      display: none !important;
+    }
+
+    /* Chat Viewport (Hero Area) */
+    .chat-viewport {
+      flex: 1 1 0%;
+      min-height: 0;
+      overflow-y: auto;
+      padding: 32px 15%;
+      display: flex;
+      flex-direction: column;
       gap: 20px;
+      position: relative;
     }
 
-    .left-column {
-      flex: 1;
+    .chat-viewport::-webkit-scrollbar {
+      width: 6px;
+    }
+    .chat-viewport::-webkit-scrollbar-thumb {
+      background: #cbd5e1;
+      border-radius: 4px;
     }
 
-    .right-column {
+    .chat-messages {
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+      min-height: 100%;
+    }
+
+    /* Welcome Card (Editorial Style) */
+    .welcome-card {
+      align-self: center;
+      text-align: center;
+      margin: auto 0;
+      max-width: 520px;
+      padding: 40px 32px;
+      background: #ffffff;
+      border: 1px solid var(--border-color);
+      border-radius: var(--radius-lg);
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.03);
+    }
+
+    .welcome-card h2 {
+      font-family: var(--font-display);
+      font-size: 2.4rem;
+      font-weight: 400;
+      color: var(--text-main);
+      margin-bottom: 10px;
+      line-height: 1.1;
+    }
+
+    .welcome-card p {
+      font-size: 0.95rem;
+      color: var(--text-muted);
+      line-height: 1.6;
+    }
+
+    /* Chat Message Bubbles */
+    .chat-messages > div {
+      max-width: 80%;
+      padding: 16px 20px;
+      border-radius: 16px;
+      font-size: 0.98rem;
+      line-height: 1.6;
+      word-break: break-word;
+      animation: messageSlideIn 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    @keyframes messageSlideIn {
+      from { opacity: 0; transform: translateY(6px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    /* User Message */
+    .chat-messages > div.user {
+      align-self: flex-end;
+      background: #1e293b;
+      color: #ffffff;
+      border-bottom-right-radius: 4px;
+      box-shadow: 0 2px 8px rgba(30, 41, 59, 0.15);
+    }
+    .chat-messages > div.user::before {
+      content: "YOU";
+      display: inline-block;
+      font-size: 0.65rem;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      padding: 2px 6px;
+      border-radius: 4px;
+      background: rgba(255, 255, 255, 0.2);
+      color: #ffffff;
+      margin-right: 8px;
+      vertical-align: middle;
+    }
+
+    /* User Speech Transcript */
+    .chat-messages > div.user-transcript {
+      align-self: flex-end;
+      background: #fef3c7;
+      border: 1px solid #fde68a;
+      color: #92400e;
+      border-bottom-right-radius: 4px;
+      font-style: italic;
+    }
+    .chat-messages > div.user-transcript::before {
+      content: "🎤 SPEECH";
+      display: inline-block;
+      font-size: 0.65rem;
+      font-weight: 700;
+      font-style: normal;
+      letter-spacing: 0.05em;
+      padding: 2px 6px;
+      border-radius: 4px;
+      background: #d97706;
+      color: #ffffff;
+      margin-right: 8px;
+      vertical-align: middle;
+    }
+
+    /* Assistant (Gemini) Response - Editorial Focus */
+    .chat-messages > div.assistant {
+      align-self: flex-start;
+      background: #ffffff;
+      border: 1px solid var(--border-color);
+      border-left: 4px solid var(--accent-blue);
+      color: var(--text-main);
+      border-bottom-left-radius: 4px;
+      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.03);
+    }
+    .chat-messages > div.assistant::before {
+      content: "GEMINI";
+      display: inline-block;
+      font-size: 0.65rem;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      padding: 2px 6px;
+      border-radius: 4px;
+      background: #eff6ff;
+      color: var(--accent-blue);
+      margin-right: 8px;
+      vertical-align: middle;
+    }
+
+    /* System Notification */
+    .chat-messages > div.system {
+      align-self: center;
+      max-width: 90%;
+      background: #f1f5f9;
+      border: 1px solid var(--border-color);
+      color: var(--text-muted);
+      font-size: 0.8rem;
+      padding: 6px 16px;
+      border-radius: 20px;
+      text-align: center;
+    }
+    .chat-messages > div.system::before {
+      content: "SYSTEM: ";
+      font-weight: 700;
+      color: var(--accent-rose);
+    }
+
+    /* Tool Call */
+    .chat-messages > div.tool-call {
+      align-self: flex-start;
+      background: #f8fafc;
+      border: 1px solid #cbd5e1;
+      border-left: 4px solid var(--accent-purple);
+      color: #1e1b4b;
+      font-family: var(--font-mono);
+      font-size: 0.88rem;
+      border-radius: var(--radius-md);
+    }
+    .chat-messages > div.tool-call::before {
+      content: "TOOL CALL";
+      display: inline-block;
+      font-family: var(--font-sans);
+      font-size: 0.65rem;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      padding: 2px 6px;
+      border-radius: 4px;
+      background: #f3e8ff;
+      color: var(--accent-purple);
+      margin-right: 8px;
+      vertical-align: middle;
+    }
+
+    /* Tool Response */
+    .chat-messages > div.tool-response {
+      align-self: flex-start;
+      background: #f0fdf4;
+      border: 1px solid #bbf7d0;
+      border-left: 4px solid var(--accent-emerald);
+      color: #064e3b;
+      font-family: var(--font-mono);
+      font-size: 0.88rem;
+      border-radius: var(--radius-md);
+    }
+    .chat-messages > div.tool-response::before {
+      content: "TOOL RESULT";
+      display: inline-block;
+      font-family: var(--font-sans);
+      font-size: 0.65rem;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      padding: 2px 6px;
+      border-radius: 4px;
+      background: #d1fae5;
+      color: var(--accent-emerald);
+      margin-right: 8px;
+      vertical-align: middle;
+    }
+
+    /* Rendered SVG Section */
+    .svg-card {
+      margin-top: 16px;
+      margin-bottom: 24px;
+      background: #ffffff;
+      border: 1px solid var(--border-color);
+      border-radius: var(--radius-lg);
+      overflow: hidden;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.06);
+    }
+
+    .svg-card-header {
+      background: #f8fafc;
+      color: var(--text-muted);
+      font-weight: 700;
+      font-size: 0.78rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      padding: 12px 18px;
+      border-bottom: 1px solid var(--border-color);
+    }
+
+    .svg-content {
+      padding: 24px;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      overflow: auto;
+      background: #ffffff;
+    }
+
+    .svg-content svg,
+    .chat-messages svg {
+      max-width: 100%;
+      height: auto;
+      max-height: 480px;
+      display: block;
+      margin: 0 auto;
+    }
+
+    /* Chat Footer / Dock */
+    .chat-footer {
+      padding: 18px 15%;
+      background: #ffffff;
+      border-top: 1px solid var(--border-color);
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.02);
+    }
+
+    .chat-input-row {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+    }
+
+    .chat-input-row input {
       flex: 1;
+      height: 50px;
+      border-radius: 25px;
+      padding: 0 22px;
+      background: #f8fafc;
+      border: 1px solid var(--border-color);
+      font-size: 0.98rem;
+      color: var(--text-main);
+    }
+
+    .chat-input-row input:focus {
+      background: #ffffff;
+      border-color: var(--accent-blue);
+      box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+    }
+
+    /* Inject Drawer */
+    .inject-content-drawer summary {
+      font-size: 0.78rem;
+      color: var(--text-dim);
+      cursor: pointer;
+      user-select: none;
+      font-weight: 500;
+    }
+    .inject-content-drawer summary:hover {
+      color: var(--text-muted);
+    }
+
+    .inject-content-body {
+      margin-top: 10px;
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+
+    .inject-content-body input {
+      flex: 1;
+      min-width: 240px;
+    }
+
+    .form-check-inline {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 0.8rem;
+      color: var(--text-muted);
+    }
+
+    /* Debug Log Bar */
+    .debug-bar {
+      padding: 8px 28px;
+      background: #f8fafc;
+      border-top: 1px solid var(--border-color);
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-family: var(--font-mono);
+      font-size: 0.78rem;
+      color: var(--text-dim);
+    }
+
+    .debug-label {
+      font-weight: 600;
+      color: var(--accent-blue);
+    }
+
+    #debugInfo {
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      font-family: inherit;
     }
 
     #setupJsonDisplay {
-      background-color: #f4f4f4;
-      padding: 10px;
-      overflow-x: auto;
+      background: #0f172a;
+      padding: 12px;
+      border-radius: var(--radius-sm);
+      font-family: var(--font-mono);
+      font-size: 0.78rem;
       white-space: pre-wrap;
+      color: #38bdf8;
+      max-height: 200px;
+      overflow-y: auto;
     }
 
-    .user-transcript:before {
-      content: "USER SPEECH: ";
-      background-color: var(--google-yellow);
-      color: black;
+    /* Responsive Backdrop Overlay */
+    .sidebar-overlay {
+      display: none;
     }
 
-    .user::before {
-      content: "USER: ";
-      background-color: var(--google-green);
-      color: white;
-    }
-
-    .assistant:before {
-      content: "GEMINI SPEECH: ";
-      background-color: var(--google-blue);
-      color: white;
-    }
-
-    .system:before {
-      content: "SYSTEM: ";
-      background-color: var(--google-red);
-      color: white;
+    @media (max-width: 900px) {
+      .chat-viewport,
+      .chat-footer {
+        padding-left: 20px;
+        padding-right: 20px;
+      }
+      .sidebar {
+        position: fixed;
+        top: 0;
+        left: 0;
+        bottom: 0;
+        transform: translateX(-100%);
+        margin-left: 0 !important;
+        box-shadow: 10px 0 30px rgba(0, 0, 0, 0.15);
+      }
+      .sidebar.open {
+        transform: translateX(0);
+      }
+      .sidebar-overlay {
+        display: none;
+        position: fixed;
+        inset: 0;
+        background: rgba(15, 23, 42, 0.3);
+        backdrop-filter: blur(2px);
+        z-index: 45;
+      }
+      body.sidebar-open .sidebar-overlay {
+        display: block;
+      }
     }
   </style>
 </head>
 
 <body>
-  <h1>Gemini Live API - Vanilla JS Example</h1>
-  <p>
-    Vanilla JavaScript implementation with audio, video, and text streaming
-  </p>
-
-  <div class="container">
-    <!-- Left Column: API Configuration -->
-    <div class="left-column">
-      <!-- Connection Setup -->
-      <section>
-        <h2>API Configuration</h2>
-
-        <!-- Connection Settings -->
-        <details open>
-          <summary>Connection Settings</summary>
-          <p>Connection will be established directly to the Gemini API using an ephemeral token from the backend.</p>
-
-          <div>
-            <label for="model">Model ID:</label><br />
-            <input type="text" id="model" value="gemini-3.1-flash-live-preview" placeholder="Enter model ID" />
+  <div class="app-layout">
+    <!-- Left Collapsible Sidebar (Settings Menu) -->
+    <aside id="sidebar" class="sidebar">
+      <div class="sidebar-header">
+        <div class="brand">
+          <div class="brand-icon">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M12 2L14.5 9.5L22 12L14.5 14.5L12 22L9.5 14.5L2 12L9.5 9.5L12 2Z"></path>
+            </svg>
           </div>
-        </details>
-
-        <!-- Gemini Behavior Settings -->
-        <br />
-        <details open>
-          <summary>Gemini Behavior</summary>
-          <div>
-            <label for="systemInstructions">System Instructions:</label><br />
-            <textarea id="systemInstructions" rows="3" cols="50">
-You are a helpful assistant. Be concise and friendly.</textarea>
+          <div class="brand-text">
+            <span class="brand-title">Gemini Live</span>
+            <span class="brand-subtitle">Ephemeral Tokens</span>
           </div>
-
-          <div>
-            <label for="voiceSelect">Voice:</label><br />
-            <select id="voiceSelect">
-              <option value="Puck">Puck (Default)</option>
-              <option value="Charon">Charon</option>
-              <option value="Kore">Kore</option>
-              <option value="Fenrir">Fenrir</option>
-              <option value="Aoede">Aoede</option>
-            </select>
-          </div>
-
-          <div>
-            <label for="temperature">Temperature: <span id="temperatureValue">1.0</span></label><br />
-            <input type="range" id="temperature" min="0.1" max="2.0" step="0.1" value="1.0" />
-            <br />
-            <small>Controls randomness (0.0-2.0]. Higher = more creative/diverse,
-              Lower = more predictable/focused</small>
-          </div>
-
-          <div>
-            <input type="checkbox" id="enableGrounding" />
-            <label for="enableGrounding">Enable Google grounding (Enabling Google grounding will disable
-              custom tools)
-            </label>
-          </div>
-        </details>
-
-        <!-- Custom Tools -->
-        <br />
-        <details>
-          <summary>Custom Tools</summary>
-
-          <div>
-            <input type="checkbox" id="enableAlertTool" checked />
-            <label for="enableAlertTool">Show Alert Box</label>
-            <span> (Display browser alerts) </span>
-          </div>
-
-          <div>
-            <input type="checkbox" id="enableCssStyleTool" checked />
-            <label for="enableCssStyleTool">Add CSS Style</label>
-            <span> (Inject CSS styles into the page) </span>
-          </div>
-        </details>
-
-        <!-- Transcription Settings -->
-        <br />
-        <details>
-          <summary>Transcription Settings</summary>
-          <div>
-            <input type="checkbox" id="enableInputTranscription" checked />
-            <label for="enableInputTranscription">Enable input transcription (your speech)</label>
-          </div>
-
-          <div>
-            <input type="checkbox" id="enableOutputTranscription" checked />
-            <label for="enableOutputTranscription">Enable output transcription (Gemini responses)</label>
-          </div>
-        </details>
-
-        <!-- Activity Detection Settings -->
-        <br />
-        <details>
-          <summary>Activity Detection Settings</summary>
-          <div>
-            <input type="checkbox" id="disableActivityDetection" />
-            <label for="disableActivityDetection">Disable automatic activity detection</label>
-          </div>
-
-          <div>
-            <label for="silenceDuration">Silence duration (ms):</label><br />
-            <input type="number" id="silenceDuration" value="500" min="500" max="10000" step="100" />
-          </div>
-
-          <div>
-            <label for="prefixPadding">Prefix padding (ms):</label><br />
-            <input type="number" id="prefixPadding" value="500" min="0" max="2000" step="100" />
-          </div>
-
-          <div>
-            <label for="endSpeechSensitivity">End of speech sensitivity:</label><br />
-            <select id="endSpeechSensitivity">
-              <option value="END_SENSITIVITY_UNSPECIFIED" selected>
-                Default
-              </option>
-              <option value="END_SENSITIVITY_HIGH">
-                High (quicker cutoff)
-              </option>
-              <option value="END_SENSITIVITY_LOW">Low (longer wait)</option>
-            </select>
-          </div>
-
-          <div>
-            <label for="startSpeechSensitivity">Start of speech sensitivity:</label><br />
-            <select id="startSpeechSensitivity">
-              <option value="START_SENSITIVITY_UNSPECIFIED" selected>
-                Default
-              </option>
-              <option value="START_SENSITIVITY_HIGH">
-                High (quicker detection)
-              </option>
-              <option value="START_SENSITIVITY_LOW">
-                Low (more filtering)
-              </option>
-            </select>
-          </div>
-
-          <div>
-            <label for="activityHandling">Activity Handling:</label><br />
-            <select id="activityHandling">
-              <option value="ACTIVITY_HANDLING_UNSPECIFIED" selected>
-                Default (Interrupts)
-              </option>
-              <option value="START_OF_ACTIVITY_INTERRUPTS">
-                Interrupt (Barge-in)
-              </option>
-              <option value="NO_INTERRUPTION">No Interruption</option>
-            </select>
-          </div>
-        </details>
-
-        <br />
-
-        <div>
-          <button id="connectBtn">Connect</button>
-          <button id="disconnectBtn">Disconnect</button>
         </div>
+        <button id="sidebarCloseBtn" class="icon-btn" title="Close Settings">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
+      </div>
 
-        <br />
-
-        <div id="connectionStatus">Not connected</div>
-
-        <br />
-
-        <!-- Setup Message JSON Display -->
-        <details id="setupJsonSection" style="display: none">
+      <!-- Sidebar Scrollable Settings Content -->
+      <div class="sidebar-content">
+        <!-- Section 1: Connection & Connect Actions -->
+        <details class="sidebar-accordion" open>
           <summary>
-            Setup Message JSON (raw config sent to Gemini API)
+            <span class="accordion-title">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18.36 6.64a9 9 0 1 1-12.73 0"></path><line x1="12" y1="2" x2="12" y2="12"></line></svg>
+              Connection
+            </span>
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <span id="sidebarStatusBadge" class="badge badge-offline">Offline</span>
+              <svg class="chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+            </div>
           </summary>
-          <pre id="setupJsonDisplay"></pre>
+          <div class="accordion-body">
+            <div class="form-group">
+              <label for="model">Model ID</label>
+              <input type="text" id="model" value="gemini-3.8-live" placeholder="gemini-3.8-live" />
+            </div>
+            <div class="btn-group">
+              <button id="connectBtn" class="btn btn-primary">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <polygon points="5 3 19 12 5 21 5 3"></polygon>
+                </svg>
+                Connect
+              </button>
+              <button id="disconnectBtn" class="btn btn-danger">Disconnect</button>
+            </div>
+          </div>
         </details>
-      </section>
-    </div>
 
-    <!-- Right Column: Media and Chat -->
-    <div class="right-column">
-      <!-- Media Controls -->
-      <section>
-        <h2>Media Streaming</h2>
-
-        <div class="container">
-          <div class="left-column">
-            <!-- Device Selectors -->
-            <div style="margin-bottom: 10px">
-              <div style="margin-bottom: 5px">
-                <label for="micSelect">Microphone:</label><br />
-                <select id="micSelect" style="width: 100%; max-width: 300px">
-                  <option value="">Default Microphone</option>
-                </select>
-              </div>
-
-              <div style="margin-bottom: 10px">
-                <label for="cameraSelect">Camera:</label><br />
-                <select id="cameraSelect" style="width: 100%; max-width: 300px">
-                  <option value="">Default Camera</option>
-                </select>
-              </div>
+        <!-- Accordion Section 2: Gemini Behavior -->
+        <details class="sidebar-accordion" open>
+          <summary>
+            <span class="accordion-title">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a10 10 0 1 0 10 10H12V2z"></path></svg>
+              Model Behavior
+            </span>
+            <svg class="chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+          </summary>
+          <div class="accordion-body">
+            <div class="form-group">
+              <label for="systemInstructions">System Instructions</label>
+              <textarea id="systemInstructions" rows="3">You are a helpful assistant. Be concise and friendly.</textarea>
             </div>
-
-            <div>
-              <button id="startAudioBtn">Start Audio</button>
-              <button id="startVideoBtn">Start Video</button>
-              <button id="startScreenBtn">Share Screen</button>
+            <div class="form-group">
+              <label for="voiceSelect">Voice</label>
+              <select id="voiceSelect">
+                <option value="Puck">Puck (Default)</option>
+                <option value="Charon">Charon</option>
+                <option value="Kore">Kore</option>
+                <option value="Fenrir">Fenrir</option>
+                <option value="Aoede">Aoede</option>
+              </select>
             </div>
+            <div class="form-check">
+              <input type="checkbox" id="enableThinking" />
+              <label for="enableThinking">Thinking <span class="help-text">(Not supported on gemini-3.8-live)</span></label>
+            </div>
+            <div class="form-group" id="thinkingLevelGroup" style="display: none; margin-top: 4px;">
+              <label for="thinkingLevelSelect">Thinking Level</label>
+              <select id="thinkingLevelSelect">
+                <option value="minimal" selected>Minimal (Default)</option>
+                <option value="low">Low</option>
+                <option value="medium">Medium</option>
+                <option value="high">High</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <div class="label-row">
+                <label for="temperature">Temperature</label>
+                <span id="temperatureValue" class="value-tag">1.0</span>
+              </div>
+              <input type="range" id="temperature" min="0.1" max="2.0" step="0.1" value="1.0" />
+            </div>
+            <div class="form-check">
+              <input type="checkbox" id="enableGrounding" />
+              <label for="enableGrounding">Enable Google Grounding <span class="help-text">(Disables custom tools)</span></label>
+            </div>
+          </div>
+        </details>
 
-            <br />
-            <div>
-              <label for="volume">Output volume:</label>
+        <!-- Accordion Section 3: Custom Tools -->
+        <details class="sidebar-accordion">
+          <summary>
+            <span class="accordion-title">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"></path></svg>
+              Custom Tools
+            </span>
+            <svg class="chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+          </summary>
+          <div class="accordion-body">
+            <div class="form-check">
+              <input type="checkbox" id="enableAlertTool" checked />
+              <label for="enableAlertTool">Show Alert Box</label>
+            </div>
+            <div class="form-check">
+              <input type="checkbox" id="enableCssStyleTool" checked />
+              <label for="enableCssStyleTool">Add CSS Style</label>
+            </div>
+            <div class="form-check">
+              <input type="checkbox" id="enableGetOrderTool" checked />
+              <label for="enableGetOrderTool">Get Order <span class="help-text">(Async mock fetch)</span></label>
+            </div>
+            <div class="form-check">
+              <input type="checkbox" id="enableDrawSvgTool" checked />
+              <label for="enableDrawSvgTool">Draw SVG <span class="help-text">(Render graphics)</span></label>
+            </div>
+          </div>
+        </details>
+
+        <!-- Accordion Section 4: Speech & Activity -->
+        <details class="sidebar-accordion">
+          <summary>
+            <span class="accordion-title">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><path d="M12 8v8M8 12h8"></path></svg>
+              Speech & Activity
+            </span>
+            <svg class="chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+          </summary>
+          <div class="accordion-body">
+            <div class="form-check">
+              <input type="checkbox" id="enableInputTranscription" checked />
+              <label for="enableInputTranscription">Input Transcription (Your speech)</label>
+            </div>
+            <div class="form-check">
+              <input type="checkbox" id="enableOutputTranscription" checked />
+              <label for="enableOutputTranscription">Output Transcription (Gemini speech)</label>
+            </div>
+            <hr class="divider" />
+            <div class="form-check">
+              <input type="checkbox" id="disableActivityDetection" />
+              <label for="disableActivityDetection">Disable Auto Activity Detection</label>
+            </div>
+            <div class="form-group">
+              <label for="silenceDuration">Silence Duration (ms)</label>
+              <input type="number" id="silenceDuration" value="500" min="500" max="10000" step="100" />
+            </div>
+            <div class="form-group">
+              <label for="prefixPadding">Prefix Padding (ms)</label>
+              <input type="number" id="prefixPadding" value="500" min="0" max="2000" step="100" />
+            </div>
+            <div class="form-group">
+              <label for="endSpeechSensitivity">End Speech Sensitivity</label>
+              <select id="endSpeechSensitivity">
+                <option value="END_SENSITIVITY_UNSPECIFIED" selected>Default</option>
+                <option value="END_SENSITIVITY_HIGH">High (quicker cutoff)</option>
+                <option value="END_SENSITIVITY_LOW">Low (longer wait)</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label for="startSpeechSensitivity">Start Speech Sensitivity</label>
+              <select id="startSpeechSensitivity">
+                <option value="START_SENSITIVITY_UNSPECIFIED" selected>Default</option>
+                <option value="START_SENSITIVITY_HIGH">High (quicker detection)</option>
+                <option value="START_SENSITIVITY_LOW">Low (more filtering)</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label for="activityHandling">Activity Handling</label>
+              <select id="activityHandling">
+                <option value="ACTIVITY_HANDLING_UNSPECIFIED" selected>Default (Interrupts)</option>
+                <option value="START_OF_ACTIVITY_INTERRUPTS">Interrupt (Barge-in)</option>
+                <option value="NO_INTERRUPTION">No Interruption</option>
+              </select>
+            </div>
+          </div>
+        </details>
+
+        <!-- Accordion Section 5: Media & Audio Devices -->
+        <details class="sidebar-accordion">
+          <summary>
+            <span class="accordion-title">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><line x1="12" y1="19" x2="12" y2="23"></line><line x1="8" y1="23" x2="16" y2="23"></line></svg>
+              Media Devices & Volume
+            </span>
+            <svg class="chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+          </summary>
+          <div class="accordion-body">
+            <div class="form-group">
+              <label for="micSelect">Microphone</label>
+              <select id="micSelect">
+                <option value="">Default Microphone</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label for="cameraSelect">Camera</label>
+              <select id="cameraSelect">
+                <option value="">Default Camera</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <div class="label-row">
+                <label for="volume">Output Volume</label>
+                <span id="volumeValue" class="value-tag">80%</span>
+              </div>
               <input type="range" id="volume" min="0" max="100" value="80" />
-              <span id="volumeValue">80%</span>
             </div>
           </div>
+        </details>
 
-          <div class="right-column">
-            <video id="videoPreview" autoplay playsinline muted hidden width="400"></video>
+        <!-- Accordion Section 6: Setup JSON Display -->
+        <details id="setupJsonSection" class="sidebar-accordion" style="display: none">
+          <summary>
+            <span class="accordion-title">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>
+              Raw Setup JSON
+            </span>
+            <svg class="chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+          </summary>
+          <div class="accordion-body">
+            <pre id="setupJsonDisplay"></pre>
+          </div>
+        </details>
+      </div>
+    </aside>
+
+    <!-- Overlay backdrop for mobile collapse -->
+    <div id="sidebarOverlay" class="sidebar-overlay"></div>
+
+    <!-- Main Viewport Area -->
+    <main class="main-content">
+      <!-- Top Navigation & Action Header -->
+      <header class="top-bar">
+        <div class="top-bar-left">
+          <button id="sidebarToggle" class="btn btn-secondary" title="Toggle Settings Menu">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="3" y1="12" x2="21" y2="12"></line>
+              <line x1="3" y1="6" x2="21" y2="6"></line>
+              <line x1="3" y1="18" x2="21" y2="18"></line>
+            </svg>
+            <span>Settings</span>
+          </button>
+          <div class="status-indicator">
+            <span class="status-dot" id="statusDot"></span>
+            <span id="connectionStatus" class="status-text">Not connected</span>
           </div>
         </div>
-      </section>
 
-      <!-- Chat Interface -->
-      <section>
-        <h2>Chat</h2>
-
-        <div id="chatContainer" style="
-              border: 1px solid;
-              height: 300px;
-              overflow-y: auto;
-              padding: 10px;
-            ">
-          <div>Connect to Gemini to start chatting</div>
+        <div class="top-bar-right">
+          <div class="media-toolbar">
+            <button id="startAudioBtn" class="btn btn-pill">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><line x1="12" y1="19" x2="12" y2="23"></line><line x1="8" y1="23" x2="16" y2="23"></line></svg>
+              Start Audio
+            </button>
+            <button id="startVideoBtn" class="btn btn-pill">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="23 7 16 12 23 17 23 7"></polygon><rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect></svg>
+              Start Video
+            </button>
+            <button id="startScreenBtn" class="btn btn-pill">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect><line x1="8" y1="21" x2="16" y2="21"></line><line x1="12" y1="17" x2="12" y2="21"></line></svg>
+              Share Screen
+            </button>
+          </div>
         </div>
-        <br />
-        <div>
-          <input type="text" id="chatInput" placeholder="Type a message..." autocomplete="off" />
-          <button id="sendBtn">Send</button>
-        </div>
-      </section>
+      </header>
 
-      <!-- Debug Info -->
-      <section>
-        <h2>Debug Info</h2>
+      <!-- Floating Video Preview Container -->
+      <div id="videoContainer" class="video-preview-floating">
+        <video id="videoPreview" autoplay playsinline muted hidden></video>
+      </div>
+
+      <!-- Main Chat Hero Viewport -->
+      <div class="chat-viewport">
+        <div id="chatContainer" class="chat-messages">
+          <div class="welcome-card">
+            <h2>Gemini Live Session</h2>
+            <p>Connect to Gemini via Ephemeral WebSocket Token to start real-time voice, vision, and function calling.</p>
+          </div>
+
+          <!-- Rendered SVG Tool Section -->
+          <section id="svgSection" class="svg-card" style="display: none">
+            <div class="svg-card-header">
+              <span>✦ Rendered Vector Graphic</span>
+            </div>
+            <div id="svgContainer" class="svg-content"></div>
+          </section>
+        </div>
+      </div>
+
+      <!-- Chat Input Dock -->
+      <footer class="chat-footer">
+        <div class="chat-input-row">
+          <input type="text" id="chatInput" placeholder="Type a message to Gemini..." autocomplete="off" />
+          <button id="sendBtn" class="btn btn-primary btn-round" title="Send Message">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="22" y1="2" x2="11" y2="13"></line>
+              <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+            </svg>
+          </button>
+        </div>
+
+        <!-- Advanced Inject Client Content Accordion -->
+        <details class="inject-content-drawer">
+          <summary>Advanced: Inject Client Content</summary>
+          <div class="inject-content-body">
+            <input type="text" id="clientContentInput" placeholder="Type client content to inject..." autocomplete="off" />
+            <button id="injectBtn" class="btn btn-secondary">Inject</button>
+            <div class="form-check-inline">
+              <input type="checkbox" id="turnComplete" checked />
+              <label for="turnComplete">Turn Complete</label>
+            </div>
+          </div>
+        </details>
+      </footer>
+
+      <!-- Debug Info Bar -->
+      <div class="debug-bar">
+        <span class="debug-label">Log:</span>
         <pre id="debugInfo">Ready to connect...</pre>
-      </section>
-    </div>
+      </div>
+    </main>
   </div>
 
-  <!-- Load libraries -->
+  <!-- Client Interaction & Helper Scripts -->
+  <script>
+    // Sidebar Collapse Logic
+    const sidebar = document.getElementById('sidebar');
+    const sidebarToggle = document.getElementById('sidebarToggle');
+    const sidebarCloseBtn = document.getElementById('sidebarCloseBtn');
+    const sidebarOverlay = document.getElementById('sidebarOverlay');
+
+    function toggleSidebar() {
+      if (window.innerWidth <= 900) {
+        sidebar.classList.toggle('open');
+        document.body.classList.toggle('sidebar-open');
+      } else {
+        sidebar.classList.toggle('collapsed');
+      }
+    }
+
+    if (sidebarToggle) sidebarToggle.addEventListener('click', toggleSidebar);
+    if (sidebarCloseBtn) sidebarCloseBtn.addEventListener('click', toggleSidebar);
+    if (sidebarOverlay) sidebarOverlay.addEventListener('click', toggleSidebar);
+
+    // Status Dot & Badge Observer
+    const statusEl = document.getElementById('connectionStatus');
+    const statusDot = document.getElementById('statusDot');
+    const sidebarBadge = document.getElementById('sidebarStatusBadge');
+
+    if (statusEl) {
+      const observer = new MutationObserver(() => {
+        const txt = statusEl.textContent.toLowerCase();
+        if (txt.includes('connected') && !txt.includes('not') && !txt.includes('failed')) {
+          if (statusDot) statusDot.className = 'status-dot dot-online';
+          if (sidebarBadge) {
+            sidebarBadge.textContent = 'Connected';
+            sidebarBadge.className = 'badge badge-online';
+          }
+        } else if (txt.includes('connecting') || txt.includes('fetching')) {
+          if (statusDot) statusDot.className = 'status-dot dot-pending';
+          if (sidebarBadge) {
+            sidebarBadge.textContent = 'Connecting';
+            sidebarBadge.className = 'badge badge-pending';
+          }
+        } else {
+          if (statusDot) statusDot.className = 'status-dot dot-offline';
+          if (sidebarBadge) {
+            sidebarBadge.textContent = 'Offline';
+            sidebarBadge.className = 'badge badge-offline';
+          }
+        }
+      });
+      observer.observe(statusEl, { childList: true, characterData: true, subtree: true });
+    }
+
+    // Media Toolbar Button Observer for active toggle highlights
+    ['startAudioBtn', 'startVideoBtn', 'startScreenBtn'].forEach(id => {
+      const btn = document.getElementById(id);
+      if (!btn) return;
+      const obs = new MutationObserver(() => {
+        if (btn.textContent.trim().startsWith('Stop')) {
+          btn.classList.add('media-active');
+        } else {
+          btn.classList.remove('media-active');
+        }
+      });
+      obs.observe(btn, { childList: true, characterData: true, subtree: true });
+    });
+  </script>
+
+  <!-- Application Logic Scripts -->
   <script src="geminilive.js"></script>
   <script src="mediaUtils.js"></script>
   <script src="tools.js"></script>
