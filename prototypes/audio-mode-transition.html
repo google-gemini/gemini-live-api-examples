@@ -1,0 +1,515 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PROTOTYPE — 번역 음성 ↔ 원음 확인 전환</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --ink: #17202a;
+      --muted: #667085;
+      --line: #d8dee8;
+      --surface: #ffffff;
+      --canvas: #f4f6f9;
+      --accent: #4355db;
+      --accent-soft: #eceeff;
+      --original: #b54708;
+      --original-soft: #fff4e8;
+      --safe: #067647;
+      --safe-soft: #ecfdf3;
+      --danger: #b42318;
+      --danger-soft: #fef3f2;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      background: var(--canvas);
+      color: var(--ink);
+      font-family: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont,
+        "Segoe UI", sans-serif;
+      line-height: 1.5;
+    }
+
+    main {
+      width: min(980px, calc(100% - 32px));
+      margin: 40px auto 72px;
+    }
+
+    h1, h2, h3, p { margin-top: 0; }
+    h1 { margin-bottom: 10px; font-size: clamp(28px, 4vw, 40px); line-height: 1.15; }
+    h2 { margin-bottom: 16px; font-size: 20px; }
+    h3 { margin-bottom: 8px; font-size: 16px; }
+
+    .eyebrow {
+      margin-bottom: 12px;
+      color: var(--accent);
+      font-size: 12px;
+      font-weight: 800;
+      letter-spacing: .1em;
+      text-transform: uppercase;
+    }
+
+    .intro {
+      max-width: 760px;
+      color: var(--muted);
+      font-size: 17px;
+    }
+
+    .note {
+      padding: 12px 14px;
+      border: 1px solid #f2c94c;
+      border-radius: 10px;
+      background: #fffbea;
+      color: #694100;
+      font-size: 14px;
+    }
+
+    .panel {
+      margin-top: 24px;
+      padding: 22px;
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      background: var(--surface);
+      box-shadow: 0 8px 24px rgba(16, 24, 40, .05);
+    }
+
+    .state-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+    }
+
+    .state-card {
+      min-height: 108px;
+      padding: 16px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: #fafbfc;
+    }
+
+    .state-card strong { display: block; margin-bottom: 6px; font-size: 14px; }
+    .state-value { font-size: 22px; font-weight: 800; }
+    .state-detail { margin-top: 5px; color: var(--muted); font-size: 13px; }
+
+    .translated { border-color: #bcc3ff; background: var(--accent-soft); }
+    .translated .state-value { color: var(--accent); }
+    .original { border-color: #fed7aa; background: var(--original-soft); }
+    .original .state-value { color: var(--original); }
+    .silent { background: #f7f8fa; }
+
+    .guarantee {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-top: 12px;
+      padding: 12px 14px;
+      border-radius: 10px;
+      background: var(--safe-soft);
+      color: var(--safe);
+      font-weight: 750;
+    }
+
+    .guarantee.bad { background: var(--danger-soft); color: var(--danger); }
+
+    .last-change {
+      margin-top: 12px;
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .controls {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    button {
+      min-height: 46px;
+      padding: 10px 14px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: #fff;
+      color: var(--ink);
+      font: inherit;
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    button:hover { border-color: var(--accent); }
+    button:focus-visible { outline: 3px solid #aab2ff; outline-offset: 2px; }
+    button.primary { border-color: var(--accent); background: var(--accent); color: #fff; }
+    button.original-action { border-color: #fdba74; background: var(--original-soft); color: #9a3412; }
+    button.secondary { background: #f7f8fa; }
+    button:disabled { cursor: not-allowed; opacity: .45; }
+
+    .audio-demo {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      margin-top: 14px;
+      padding: 14px;
+      border: 1px dashed var(--line);
+      border-radius: 10px;
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .tabs { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
+    .tabs button[aria-selected="true"] { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
+
+    .scenario-copy { color: var(--muted); }
+    .steps { display: grid; gap: 10px; }
+    .step {
+      display: grid;
+      grid-template-columns: 32px 1fr auto;
+      align-items: center;
+      gap: 12px;
+      padding: 12px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+    }
+    .step.done { border-color: #abefc6; background: var(--safe-soft); }
+    .step.current { border-color: #aab2ff; background: var(--accent-soft); }
+    .step-index {
+      display: grid;
+      width: 28px;
+      height: 28px;
+      place-items: center;
+      border-radius: 50%;
+      background: #eef1f5;
+      font-weight: 800;
+      font-size: 13px;
+    }
+
+    .event-log {
+      max-height: 220px;
+      margin: 0;
+      padding-left: 22px;
+      overflow: auto;
+      color: var(--muted);
+      font-size: 13px;
+    }
+    .event-log li + li { margin-top: 5px; }
+
+    @media (max-width: 720px) {
+      .state-grid, .controls { grid-template-columns: 1fr; }
+      .step { grid-template-columns: 32px 1fr; }
+      .step button { grid-column: 1 / -1; }
+      .audio-demo { align-items: stretch; flex-direction: column; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <div class="eyebrow">Throwaway prototype</div>
+    <h1>번역 음성과 원음은 절대 겹치지 않아야 한다</h1>
+    <p class="intro">
+      이 데모가 답하려는 질문은 하나입니다. 기본은 번역 음성만 듣고,
+      <strong>원음 확인</strong>을 누르는 동안에는 원음만 들은 뒤,
+      버튼을 놓으면 다음 자연스러운 발화 경계에서 번역으로 돌아오는 흐름이
+      이해하기 쉽고 안전한가요?
+    </p>
+    <p class="note">
+      합성 음성은 전환 감각만 확인하기 위한 샘플입니다. Gemini 통역 품질이나 실제 지연을 재현하지 않습니다.
+    </p>
+
+    <section class="panel" aria-labelledby="state-title">
+      <h2 id="state-title">현재 청취 상태</h2>
+      <div class="state-grid">
+        <article class="state-card" id="heard-card">
+          <strong>지금 들리는 음성</strong>
+          <div class="state-value" id="heard-value"></div>
+          <div class="state-detail" id="heard-detail"></div>
+        </article>
+        <article class="state-card">
+          <strong>발화 상태</strong>
+          <div class="state-value" id="speech-value"></div>
+          <div class="state-detail" id="speech-detail"></div>
+        </article>
+        <article class="state-card">
+          <strong>번역 트랙</strong>
+          <div class="state-value" id="translation-value"></div>
+          <div class="state-detail">기본 청취 트랙</div>
+        </article>
+        <article class="state-card">
+          <strong>원음 트랙</strong>
+          <div class="state-value" id="original-value"></div>
+          <div class="state-detail">확인할 때만 켜지는 트랙</div>
+        </article>
+      </div>
+      <div class="guarantee" id="guarantee"></div>
+      <div class="last-change" id="last-change"></div>
+    </section>
+
+    <section class="panel" aria-labelledby="free-title">
+      <h2 id="free-title">자유롭게 눌러보기</h2>
+      <div class="controls">
+        <button class="primary" data-action="SPEAKER_STARTS">화자가 말하기 시작</button>
+        <button class="original-action" data-action="HOLD_ORIGINAL">원음 확인 누르기</button>
+        <button class="original-action" data-action="RELEASE_ORIGINAL">원음 확인 놓기</button>
+        <button data-action="PHRASE_BOUNDARY">다음 발화 경계 도착</button>
+        <button data-action="SPEAKER_STOPS">화자가 말하기 종료</button>
+        <button class="secondary" data-action="RESET">처음부터</button>
+      </div>
+      <div class="audio-demo">
+        <span>합성 음성을 켜면 현재 트랙에 맞춰 일본어 원음 또는 한국어 번역 샘플을 재생합니다.</span>
+        <button id="audio-toggle" type="button">합성 음성 켜기</button>
+      </div>
+    </section>
+
+    <section class="panel" aria-labelledby="scenario-title">
+      <h2 id="scenario-title">가이드 시나리오</h2>
+      <div class="tabs" role="tablist" id="scenario-tabs"></div>
+      <h3 id="scenario-name"></h3>
+      <p class="scenario-copy" id="scenario-copy"></p>
+      <div class="steps" id="scenario-steps"></div>
+    </section>
+
+    <section class="panel" aria-labelledby="log-title">
+      <h2 id="log-title">전환 기록</h2>
+      <ol class="event-log" id="event-log"></ol>
+    </section>
+  </main>
+
+  <script>
+    // Portable pure state machine: no DOM access and no browser side effects.
+    const AudioModeMachine = (() => {
+      const initialState = () => ({
+        speakerActive: false,
+        mode: "translation",
+        returnPending: false,
+        lastChange: "회의에 입장했습니다. 화자가 말하기 전이라 음성은 들리지 않습니다.",
+        eventLog: []
+      });
+
+      const describeAudio = (state) => {
+        if (!state.speakerActive) return "silence";
+        if (state.mode === "original") return "original";
+        return "translation";
+      };
+
+      const append = (state, action, message) => ({
+        ...state,
+        lastChange: message,
+        eventLog: [...state.eventLog, `${action}: ${message}`]
+      });
+
+      const transition = (state, action) => {
+        switch (action) {
+          case "RESET":
+            return initialState();
+          case "SPEAKER_STARTS":
+            return append(
+              { ...state, speakerActive: true },
+              action,
+              state.mode === "original"
+                ? "화자가 말하기 시작했습니다. 원음 확인이 눌려 있어 원음만 재생합니다."
+                : "화자가 말하기 시작했습니다. 번역 음성만 재생합니다."
+            );
+          case "HOLD_ORIGINAL":
+            return append(
+              { ...state, mode: "original", returnPending: false },
+              action,
+              state.speakerActive
+                ? "번역을 즉시 끄고 원음만 재생합니다."
+                : "원음 확인을 눌렀지만 현재 발화가 없어 음성은 들리지 않습니다."
+            );
+          case "RELEASE_ORIGINAL":
+            if (state.mode !== "original") {
+              return append(state, action, "원음 확인이 켜져 있지 않아 상태를 바꾸지 않았습니다.");
+            }
+            if (!state.speakerActive) {
+              return append(
+                { ...state, mode: "translation", returnPending: false },
+                action,
+                "발화가 없어 즉시 번역 대기 상태로 돌아갑니다."
+              );
+            }
+            return append(
+              { ...state, returnPending: true },
+              action,
+              "버튼을 놓았습니다. 문장 중간에 번역을 겹치지 않고, 다음 발화 경계까지 원음만 유지합니다."
+            );
+          case "PHRASE_BOUNDARY":
+            if (!state.returnPending) {
+              return append(state, action, "복귀 대기 중이 아니므로 현재 트랙을 유지합니다.");
+            }
+            return append(
+              { ...state, mode: "translation", returnPending: false },
+              action,
+              "발화 경계에 도착해 원음을 끄고 번역 음성만 재생합니다."
+            );
+          case "SPEAKER_STOPS":
+            return append(
+              { ...state, speakerActive: false, mode: "translation", returnPending: false },
+              action,
+              "화자가 말을 마쳤습니다. 두 트랙을 끄고 다음 발화의 번역을 기다립니다."
+            );
+          default:
+            return append(state, action, "알 수 없는 동작이라 상태를 바꾸지 않았습니다.");
+        }
+      };
+
+      const view = (state) => {
+        const heard = describeAudio(state);
+        return {
+          heard,
+          translationPlaying: heard === "translation",
+          originalPlaying: heard === "original",
+          overlap: heard === "translation" && heard === "original",
+          speakerActive: state.speakerActive,
+          returnPending: state.returnPending,
+          lastChange: state.lastChange,
+          eventLog: state.eventLog
+        };
+      };
+
+      return { initialState, transition, view };
+    })();
+
+    const scenarios = [
+      {
+        name: "기본 전환",
+        copy: "번역을 듣다가 원음을 확인하고, 문장 중간 겹침 없이 다음 발화 경계에서 번역으로 돌아옵니다.",
+        actions: ["SPEAKER_STARTS", "HOLD_ORIGINAL", "RELEASE_ORIGINAL", "PHRASE_BOUNDARY"]
+      },
+      {
+        name: "발화 종료",
+        copy: "원음 확인을 놓은 뒤 발화가 먼저 끝나면, 다음 사람의 발화는 번역으로 시작해야 합니다.",
+        actions: ["SPEAKER_STARTS", "HOLD_ORIGINAL", "RELEASE_ORIGINAL", "SPEAKER_STOPS", "SPEAKER_STARTS"]
+      },
+      {
+        name: "무음에서 원음 확인",
+        copy: "아무도 말하지 않을 때 버튼을 눌러도 소리가 생기지 않고, 다음 발화에는 원음만 들립니다.",
+        actions: ["HOLD_ORIGINAL", "SPEAKER_STARTS", "RELEASE_ORIGINAL", "PHRASE_BOUNDARY"]
+      }
+    ];
+
+    const labels = {
+      SPEAKER_STARTS: "화자가 말하기 시작",
+      HOLD_ORIGINAL: "원음 확인 누르기",
+      RELEASE_ORIGINAL: "원음 확인 놓기",
+      PHRASE_BOUNDARY: "다음 발화 경계",
+      SPEAKER_STOPS: "화자가 말하기 종료"
+    };
+
+    let state = AudioModeMachine.initialState();
+    let activeScenario = 0;
+    let scenarioStep = 0;
+    let speechEnabled = false;
+    let lastSpokenMode = null;
+
+    const el = (id) => document.getElementById(id);
+
+    function stopSpeech() {
+      if ("speechSynthesis" in window) window.speechSynthesis.cancel();
+      lastSpokenMode = null;
+    }
+
+    function speakMode(mode) {
+      if (!speechEnabled || !("speechSynthesis" in window) || mode === "silence") {
+        stopSpeech();
+        return;
+      }
+      if (lastSpokenMode === mode && window.speechSynthesis.speaking) return;
+      window.speechSynthesis.cancel();
+      const utterance = new SpeechSynthesisUtterance(
+        mode === "original"
+          ? "次の四半期は、日本チームと共同で検証を進めます。"
+          : "다음 분기에는 일본팀과 공동으로 검증을 진행합니다."
+      );
+      utterance.lang = mode === "original" ? "ja-JP" : "ko-KR";
+      utterance.rate = 0.88;
+      window.speechSynthesis.speak(utterance);
+      lastSpokenMode = mode;
+    }
+
+    function dispatch(action, fromScenario = false) {
+      state = AudioModeMachine.transition(state, action);
+      if (fromScenario) scenarioStep += 1;
+      render();
+    }
+
+    function renderState() {
+      const view = AudioModeMachine.view(state);
+      const heardNames = { silence: "무음", translation: "번역 음성만", original: "원음만" };
+      el("heard-value").textContent = heardNames[view.heard];
+      el("heard-detail").textContent = view.returnPending
+        ? "다음 발화 경계에서 번역으로 복귀 예정"
+        : "원문·번역 자막은 항상 함께 표시";
+      el("speech-value").textContent = view.speakerActive ? "발화 중" : "발화 없음";
+      el("speech-detail").textContent = view.speakerActive ? "오디오 트랙 하나만 활성화" : "두 오디오 트랙 모두 정지";
+      el("translation-value").textContent = view.translationPlaying ? "재생" : "음소거";
+      el("original-value").textContent = view.originalPlaying ? "재생" : "음소거";
+      el("last-change").textContent = `방금 변화: ${view.lastChange}`;
+
+      const card = el("heard-card");
+      card.className = `state-card ${view.heard === "translation" ? "translated" : view.heard === "original" ? "original" : "silent"}`;
+      const guarantee = el("guarantee");
+      guarantee.className = `guarantee${view.overlap ? " bad" : ""}`;
+      guarantee.textContent = view.overlap
+        ? "위험: 원음과 번역 음성이 동시에 재생 중입니다."
+        : "안전: 원음과 번역 음성은 동시에 재생되지 않습니다.";
+
+      el("event-log").innerHTML = view.eventLog.length
+        ? view.eventLog.map((item) => `<li>${item}</li>`).join("")
+        : "<li>아직 전환이 없습니다.</li>";
+      speakMode(view.heard);
+    }
+
+    function renderScenario() {
+      const tabs = el("scenario-tabs");
+      tabs.innerHTML = scenarios.map((scenario, index) =>
+        `<button type="button" role="tab" aria-selected="${index === activeScenario}" data-scenario="${index}">${scenario.name}</button>`
+      ).join("");
+      const scenario = scenarios[activeScenario];
+      el("scenario-name").textContent = scenario.name;
+      el("scenario-copy").textContent = scenario.copy;
+      el("scenario-steps").innerHTML = scenario.actions.map((action, index) => {
+        const status = index < scenarioStep ? "done" : index === scenarioStep ? "current" : "";
+        return `<div class="step ${status}">
+          <span class="step-index">${index + 1}</span>
+          <span>${labels[action]}</span>
+          <button type="button" data-step="${index}" data-step-action="${action}" ${index !== scenarioStep ? "disabled" : ""}>실행</button>
+        </div>`;
+      }).join("");
+
+      tabs.querySelectorAll("[data-scenario]").forEach((button) => {
+        button.addEventListener("click", () => {
+          activeScenario = Number(button.dataset.scenario);
+          scenarioStep = 0;
+          state = AudioModeMachine.initialState();
+          stopSpeech();
+          render();
+        });
+      });
+
+      el("scenario-steps").querySelectorAll("[data-step-action]").forEach((button) => {
+        button.addEventListener("click", () => dispatch(button.dataset.stepAction, true));
+      });
+    }
+
+    function render() {
+      renderState();
+      renderScenario();
+    }
+
+    document.querySelectorAll("[data-action]").forEach((button) => {
+      button.addEventListener("click", () => dispatch(button.dataset.action));
+    });
+
+    el("audio-toggle").addEventListener("click", () => {
+      speechEnabled = !speechEnabled;
+      el("audio-toggle").textContent = speechEnabled ? "합성 음성 끄기" : "합성 음성 켜기";
+      if (speechEnabled) speakMode(AudioModeMachine.view(state).heard);
+      else stopSpeech();
+    });
+
+    render();
+  </script>
+</body>
+</html>

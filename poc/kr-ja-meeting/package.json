@@ -1,0 +1,30 @@
+{
+  "name": "kr-ja-meeting-tracer",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "canary:browser-playout": "node scripts/browser-playout-canary.mjs",
+    "canary:listening-mix": "node scripts/listening-mix-browser-canary.mjs",
+    "canary:listening-modes": "node scripts/listening-mode-browser-canary.mjs",
+    "canary:natural-conversation": "node scripts/natural-conversation-browser-canary.mjs",
+    "canary:automated-contracts": "node scripts/automated-contract-canary.mjs",
+    "canary:final": "node scripts/final-natural-conversation-canaries.mjs",
+    "canary:provider-browser": "node scripts/provider-browser-playout-canary.mjs",
+    "canary:provider": "node scripts/provider-canary.mjs",
+    "canary:provider-semantic": "node scripts/provider-semantic-canary.mjs",
+    "canary:playout-continuity": "node scripts/playout-continuity-canary.mjs",
+    "dev": "node src/server.mjs",
+    "test": "node --test",
+    "check": "node --test && node scripts/check-source.mjs"
+  },
+  "dependencies": {
+    "@livekit/rtc-node": "^0.13.34",
+    "livekit-client": "^2.22.0",
+    "livekit-server-sdk": "^2.18.0",
+    "ws": "^8.21.3"
+  },
+  "devDependencies": {
+    "playwright": "^1.62.1"
+  }
+}
